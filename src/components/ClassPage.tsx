@@ -127,6 +127,7 @@ export default function ClassPage() {
     }
   }, [id, isTeacher, attendanceDate, classData]);
 
+  
   const fetchClassData = useCallback(async () => {
     if (id) {
       try {
