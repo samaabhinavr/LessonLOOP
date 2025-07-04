@@ -26,3 +26,4 @@ dist-ssr
 
 # MongoDB data directory
 server/data/
+server/uploads/
