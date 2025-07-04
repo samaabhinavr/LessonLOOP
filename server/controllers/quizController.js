@@ -4,7 +4,8 @@ const Class = require('../models/Class');
 const QuizResult = require('../models/QuizResult');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const genAI = new GoogleGenerativeAI('AIzaSyDTmhvGQv0G4jr6v4ABeuGxejppVuC3PeU');
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
 
 // @desc    Create a new quiz
 // @route   POST /api/quizzes
@@ -307,6 +308,7 @@ exports.getQuizResultForStudent = async (req, res) => {
 // @route   POST /api/quizzes/generate-mcq
 // @access  Private (Teacher)
 exports.generateMCQ = async (req, res) => {
+  console.log('Received request to generate MCQs with body:', req.body);
   const { topic, numQuestions, difficulty, gradeLevel } = req.body;
 
   if (req.user.role !== 'Teacher') {
@@ -314,23 +316,47 @@ exports.generateMCQ = async (req, res) => {
   }
 
   try {
-    console.log("GEMINI_API_KEY loaded:", process.env.GEMINI_API_KEY ? "Yes" : "No");
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const prompt = `Generate ${numQuestions} multiple-choice questions about ${topic} for a ${gradeLevel} grade level, with a difficulty of ${difficulty}. Each question should have 4 options. Provide the output as a JSON array of objects, where each object has 'questionText' (string), 'options' (an array of objects, each with a 'text'), and 'correctAnswer' (the 0-based index of the correct option). Ensure the JSON is valid and can be directly parsed.`;
+    const prompt = `You are an expert quiz creator. Generate ${numQuestions} multiple-choice questions about ${topic} for a ${gradeLevel} grade level, with a difficulty of ${difficulty}. Each question must have exactly 4 options. Your response must be a valid, parsable JSON array of objects. Each object in the array must have the following properties and types: 'questionText' (string), 'options' (an array of exactly 4 objects, each with a 'text' property of type string), and 'correctAnswer' (the 0-based index of the correct option, must be a number between 0 and 3). Return ONLY the JSON array. Do not include any extra text, explanations, or formatting outside of the JSON array.`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    const text = response.text();
+    let text = response.text();
 
-    // Attempt to parse the JSON response
+    // Attempt to clean the response by removing markdown code block formatting
+    if (text.startsWith('```json') && text.endsWith('```')) {
+      text = text.substring(7, text.length - 3).trim();
+    } else if (text.startsWith('```') && text.endsWith('```')) {
+      // Fallback for generic code blocks
+      text = text.substring(3, text.length - 3).trim();
+    }
+
     let generatedQuestions;
     try {
       generatedQuestions = JSON.parse(text);
     } catch (parseError) {
       console.error("Failed to parse Gemini response as JSON:", parseError);
-      console.error("Gemini raw response:", text);
+      console.error("Raw Gemini response:", text);
       return res.status(500).json({ msg: "Failed to generate questions: Invalid JSON response from AI." });
+    }
+
+    // Validate the structure of the generated questions
+    if (!Array.isArray(generatedQuestions)) {
+      return res.status(500).json({ msg: "Failed to generate questions: AI response is not a JSON array." });
+    }
+
+    for (const question of generatedQuestions) {
+      if (
+        !question.questionText ||
+        !Array.isArray(question.options) ||
+        question.options.length !== 4 ||
+        typeof question.correctAnswer !== 'number' ||
+        question.correctAnswer < 0 ||
+        question.correctAnswer > 3
+      ) {
+        return res.status(500).json({ msg: "Failed to generate questions: AI response does not match the expected schema." });
+      }
     }
 
     res.json({ questions: generatedQuestions });

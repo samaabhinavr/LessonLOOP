@@ -2,7 +2,6 @@ const Class = require('../models/Class');
 const User = require('../models/User');
 const Quiz = require('../models/Quiz');
 const QuizResult = require('../models/QuizResult');
-const Attendance = require('../models/Attendance');
 const { nanoid } = require('nanoid');
 
 // @desc    Create a class
@@ -213,40 +212,3 @@ exports.getMyGrades = async (req, res) => {
   }
 };
 
-// @desc    Get a student's attendance summary across all their classes
-// @route   GET /api/classes/my-attendance-summary
-// @access  Private (Student)
-exports.getStudentAttendanceSummary = async (req, res) => {
-  try {
-    const studentId = req.user.id;
-
-    // Find all classes the student is enrolled in
-    const enrolledClasses = await Class.find({ students: studentId }).select('_id');
-    const classIds = enrolledClasses.map(cls => cls._id);
-
-    // Find all attendance records for these classes where the student is present or absent
-    const attendanceRecords = await Attendance.find({
-      class: { $in: classIds },
-      'records.student': studentId,
-    });
-
-    let totalPresent = 0;
-    let totalRecords = 0;
-
-    attendanceRecords.forEach(attendance => {
-      attendance.records.forEach(record => {
-        if (record.student.toString() === studentId.toString()) {
-          totalRecords++;
-          if (record.status === 'Present') {
-            totalPresent++;
-          }
-        }
-      });
-    });
-
-    res.json({ totalPresent, totalRecords });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
-  }
-};

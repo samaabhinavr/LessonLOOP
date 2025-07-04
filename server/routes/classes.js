@@ -18,10 +18,7 @@ router.get('/', auth, classController.getClasses);
 // @route   GET api/classes/:id
 // @desc    Get a single class by ID
 // @access  Private
-// @route   GET api/classes/my-attendance-summary
-// @desc    Get a student's attendance summary across all their classes
-// @access  Private (Student)
-router.get('/my-attendance-summary', auth, authorize('Student'), classController.getStudentAttendanceSummary);
+
 
 // @route   GET api/classes/:id
 // @desc    Get a single class by ID

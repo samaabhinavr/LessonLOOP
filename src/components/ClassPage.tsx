@@ -55,7 +55,7 @@ interface GradebookEntry {
   averageScore: number;
 }
 
-type TabType = 'quizzes' | 'gradebook' | 'materials' | 'attendance' | 'my-grades';
+type TabType = 'quizzes' | 'gradebook' | 'materials' | 'my-grades';
 
 export default function ClassPage() {
   const [activeTab, setActiveTab] = useState<TabType>('quizzes');
@@ -83,9 +83,7 @@ export default function ClassPage() {
   const [aiGradeLevel, setAiGradeLevel] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
-  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
-  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  
 
   const students = [
     { id: '1', name: 'Alice Smith', quiz1: 85, quiz2: 92, midterm: 88, final: 0, average: 88.3 },
@@ -98,36 +96,6 @@ export default function ClassPage() {
 
   const [myGrades, setMyGrades] = useState<any[]>([]);
 
-  const fetchAttendance = useCallback(async () => {
-    if (id && isTeacher && classData) {
-      try {
-        const res = await axios.get(`http://localhost:5000/api/attendance/${id}/${attendanceDate}`);
-        const fetchedRecords = res.data.records;
-
-        // Initialize records with all students from classData, defaulting to 'Absent'
-        const initialRecords = classData.students.map(student => ({
-          student: student._id,
-          status: 'Absent',
-        }));
-
-        // Merge fetched records with initial records
-        const mergedRecords = initialRecords.map(initialRecord => {
-          const fetchedRecord = fetchedRecords.find(rec => rec.student === initialRecord.student);
-          return fetchedRecord ? { ...initialRecord, status: fetchedRecord.status } : initialRecord;
-        });
-        setAttendanceRecords(mergedRecords);
-      } catch (err) {
-        console.error('Error fetching attendance:', err);
-        // If attendance is not found, initialize with all students defaulting to 'Absent'
-        if (axios.isAxiosError(err) && err.response?.status === 404) {
-          const initialRecords = classData.students.map(student => ({ student: student._id, status: 'Absent' }));
-          setAttendanceRecords(initialRecords);
-        }
-      }
-    }
-  }, [id, isTeacher, attendanceDate, classData]);
-
-  
   const fetchClassData = useCallback(async () => {
     if (id) {
       try {
@@ -201,10 +169,7 @@ export default function ClassPage() {
     if (activeTab === 'my-grades') {
       fetchMyGrades();
     }
-    if (activeTab === 'attendance') {
-      fetchAttendance();
-    }
-  }, [id, activeTab, fetchAttendance, fetchClassData, fetchQuizzes, fetchGradebookData, fetchMyGrades, fetchMaterials, isTeacher]);
+  }, [id, activeTab, fetchClassData, fetchQuizzes, fetchGradebookData, fetchMyGrades, fetchMaterials, isTeacher]);
 
   const handleBackToDashboard = () => {
     navigate('/dashboard');
@@ -288,6 +253,7 @@ export default function ClassPage() {
       setNewQuizQuestions(res.data.questions);
     } catch (err) {
       console.error('Error generating MCQs:', err);
+      alert('Failed to generate questions. Please try again or adjust your inputs.');
     } finally {
       setAiLoading(false);
     }
@@ -335,45 +301,6 @@ export default function ClassPage() {
     } catch (err) {
       console.error('Error updating quiz:', err);
     }
-  };
-
-  const handleSaveAttendance = async () => {
-    if (!id || !classData) return;
-
-    try {
-      const recordsToSave = classData.students.map(student => {
-        const record = attendanceRecords.find(rec => rec.student === student._id);
-        return {
-          student: student._id,
-          status: record ? record.status : 'Absent', // Default to Absent if not marked
-        };
-      });
-
-      await axios.post(`http://localhost:5000/api/attendance/${id}`, {
-        date: attendanceDate,
-        records: recordsToSave,
-      }, {
-        headers: { 'x-auth-token': localStorage.getItem('token') }
-      });
-      console.log('Attendance saved successfully!');
-      // Optionally, re-fetch attendance to ensure UI is up-to-date
-      fetchAttendance();
-    } catch (err) {
-      console.error('Error saving attendance:', err);
-    }
-  };
-
-  const handleAttendanceChange = (studentId: string, status: 'Present' | 'Absent') => {
-    setAttendanceRecords(prevRecords => {
-      const existingRecordIndex = prevRecords.findIndex(rec => rec.student === studentId);
-      if (existingRecordIndex > -1) {
-        const updatedRecords = [...prevRecords];
-        updatedRecords[existingRecordIndex] = { student: studentId, status };
-        return updatedRecords;
-      } else {
-        return [...prevRecords, { student: studentId, status }];
-      }
-    });
   };
 
   const handlePublishQuiz = async (quizId: string) => {
@@ -517,21 +444,7 @@ export default function ClassPage() {
                   Materials
                 </div>
               </button>
-              {isTeacher && (
-                <button
-                  onClick={() => setActiveTab('attendance')}
-                  className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
-                    activeTab === 'attendance'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center">
-                    <ClipboardList className="w-4 h-4 mr-2" />
-                    Attendance
-                  </div>
-                </button>
-              )}
+              
               {!isTeacher && (
                 <button
                   onClick={() => setActiveTab('my-grades')}
@@ -719,58 +632,6 @@ export default function ClassPage() {
               </div>
             )}
 
-            {activeTab === 'attendance' && isTeacher && (
-              <div>
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-lg font-semibold text-slate-900">Attendance for {new Date(attendanceDate).toLocaleDateString()}</h3>
-                  <input
-                    type="date"
-                    value={attendanceDate}
-                    onChange={(e) => setAttendanceDate(e.target.value)}
-                    className="border border-slate-300 rounded-lg p-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div className="space-y-4">
-                  {classData?.students.length === 0 ? (
-                    <p className="text-slate-600">No students enrolled in this class yet.</p>
-                  ) : (
-                    classData?.students.map((student) => {
-                      const studentRecord = attendanceRecords.find(rec => rec.student === student._id);
-                      const status = studentRecord ? studentRecord.status : 'Not Marked';
-                      return (
-                        <div key={student._id} className="flex items-center justify-between bg-slate-50 rounded-lg p-4 border border-slate-200">
-                          <span className="text-lg font-medium text-slate-900">{student.name}</span>
-                          <div className="flex space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => handleAttendanceChange(student._id, 'Present')}
-                              className={`px-4 py-2 rounded-lg font-medium transition-colors ${status === 'Present' ? 'bg-green-600 text-white' : 'bg-slate-200 text-slate-800 hover:bg-green-100 hover:text-green-800'}`}
-                            >
-                              Present
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleAttendanceChange(student._id, 'Absent')}
-                              className={`px-4 py-2 rounded-lg font-medium transition-colors ${status === 'Absent' ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-800 hover:bg-red-100 hover:text-red-800'}`}
-                            >
-                              Absent
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-                <div className="flex justify-end mt-6">
-                  <button
-                    onClick={handleSaveAttendance}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
-                  >
-                    Save Attendance
-                  </button>
-                </div>
-              </div>
-            )}
 
             {activeTab === 'materials' && (
               <div className="space-y-4">
@@ -1165,71 +1026,6 @@ export default function ClassPage() {
                   className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
                 >
                   Update Quiz
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Attendance Modal */}
-      {showAttendanceModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl p-8 shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold text-slate-900 mb-4">Take Attendance</h2>
-            <form onSubmit={handleSaveAttendance} className="space-y-6">
-              <div>
-                <label htmlFor="attendanceDate" className="block text-sm font-medium text-slate-700 mb-2">Date</label>
-                <input
-                  type="date"
-                  id="attendanceDate"
-                  value={attendanceDate}
-                  onChange={(e) => setAttendanceDate(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-              </div>
-
-              <h3 className="text-lg font-semibold text-slate-900 mt-6 mb-3">Students</h3>
-              {classData?.students.map((student) => {
-                const studentRecord = attendanceRecords.find(rec => rec.student === student._id);
-                const status = studentRecord ? studentRecord.status : 'Not Marked';
-                return (
-                  <div key={student._id} className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-slate-900">{student.name}</span>
-                    <div className="flex space-x-2">
-                      <button
-                        type="button"
-                        onClick={() => handleAttendanceChange(student._id, 'Present')}
-                        className={`px-3 py-1 rounded-lg text-sm font-medium ${studentRecord?.status === 'Present' ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-800'}`}
-                      >
-                        Present
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAttendanceChange(student._id, 'Absent')}
-                        className={`px-3 py-1 rounded-lg text-sm font-medium ${studentRecord?.status === 'Absent' ? 'bg-red-500 text-white' : 'bg-slate-200 text-slate-800'}`}
-                      >
-                        Absent
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-
-              <div className="flex justify-end space-x-4 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setShowAttendanceModal(false)}
-                  className="bg-slate-300 hover:bg-slate-400 text-slate-800 font-semibold py-3 px-4 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
-                >
-                  Save Attendance
                 </button>
               </div>
             </form>
