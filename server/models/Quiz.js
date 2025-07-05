@@ -27,6 +27,10 @@ const QuizSchema = new mongoose.Schema({
         type: Number, // Index of the correct option in the options array
         required: true,
       },
+      explanation: {
+        type: String,
+        required: true,
+      },
     },
   ],
   createdBy: {

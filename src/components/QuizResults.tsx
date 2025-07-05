@@ -103,7 +103,7 @@ export default function QuizResults() {
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {quizResults.map((result) => (
-                    <tr key={result._id} className="hover:bg-slate-50">
+                    <tr key={result._id} className="hover:bg-slate-50 cursor-pointer" onClick={() => navigate(`/quiz/${result.quiz}/attempt/${result._id}`)}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-slate-900">{result.student.name}</div>
                         <div className="text-xs text-slate-500">{result.student.email}</div>

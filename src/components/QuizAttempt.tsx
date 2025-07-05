@@ -59,6 +59,7 @@ export default function QuizAttempt() {
       });
       setScore(res.data.score);
       setIsSubmitted(true);
+      navigate(`/quiz/${quizId}/attempt/${res.data.quizResultId}`);
     } catch (err) {
       console.error('Error submitting quiz:', err);
     }

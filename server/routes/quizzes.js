@@ -50,6 +50,12 @@ router.get('/results/:quizId', auth, authorize('Teacher'), quizController.getQui
 // @access  Private (Student)
 router.get('/result/:quizId', auth, authorize('Student'), quizController.getQuizResultForStudent);
 
+// @route   GET /api/quizzes/result/:quizId/attempt/:attemptId
+// @desc    Get a specific quiz attempt by ID
+// @access  Private (Teacher/Student)
+router.get('/result/:quizId/attempt/:attemptId', auth, quizController.getQuizAttemptById);
+
+
 // @route   POST /api/quizzes/generate-mcq
 // @desc    Generate MCQs using AI
 // @access  Private (Teacher)

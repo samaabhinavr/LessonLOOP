@@ -304,6 +304,35 @@ exports.getQuizResultForStudent = async (req, res) => {
   }
 };
 
+// @desc    Get a specific quiz attempt by ID
+// @route   GET /api/quizzes/result/:quizId/attempt/:attemptId
+// @access  Private (Teacher/Student)
+exports.getQuizAttemptById = async (req, res) => {
+  try {
+    const quizResult = await QuizResult.findById(req.params.attemptId).populate('student', 'name email');
+
+    if (!quizResult) {
+      return res.status(404).json({ msg: 'Quiz result not found' });
+    }
+
+    // Ensure user has access to the quiz's class
+    const quiz = await Quiz.findById(quizResult.quiz);
+    const userClass = await Class.findOne({
+      _id: quiz.class,
+      $or: [{ teacher: req.user.id }, { students: req.user.id }],
+    });
+
+    if (!userClass) {
+      return res.status(403).json({ msg: 'Not authorized to access this quiz result' });
+    }
+
+    res.json(quizResult);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
+
 // @desc    Generate MCQs using AI
 // @route   POST /api/quizzes/generate-mcq
 // @access  Private (Teacher)
@@ -318,7 +347,7 @@ exports.generateMCQ = async (req, res) => {
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const prompt = `You are an expert quiz creator. Generate ${numQuestions} multiple-choice questions about ${topic} for a ${gradeLevel} grade level, with a difficulty of ${difficulty}. Each question must have exactly 4 options. Your response must be a valid, parsable JSON array of objects. Each object in the array must have the following properties and types: 'questionText' (string), 'options' (an array of exactly 4 objects, each with a 'text' property of type string), and 'correctAnswer' (the 0-based index of the correct option, must be a number between 0 and 3). Return ONLY the JSON array. Do not include any extra text, explanations, or formatting outside of the JSON array.`;
+    const prompt = `You are an expert quiz creator. Generate ${numQuestions} multiple-choice questions about ${topic} for a ${gradeLevel} grade level from CBSE syllabus, with a difficulty of ${difficulty}. Each question must have exactly 4 options. Your response must be a valid, parsable JSON array of objects. Each object in the array must have the following properties and types: 'questionText' (string), 'options' (an array of exactly 4 objects, each with a 'text' property of type string), 'correctAnswer' (the 0-based index of the correct option, must be a number between 0 and 3), and 'explanation' (a brief explanation for why the correct answer is correct). Return ONLY the JSON array. Do not include any extra text, explanations, or formatting outside of the JSON array.`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -348,6 +377,7 @@ exports.generateMCQ = async (req, res) => {
 
     for (const question of generatedQuestions) {
       if (
+        !question.explanation ||
         !question.questionText ||
         !Array.isArray(question.options) ||
         question.options.length !== 4 ||

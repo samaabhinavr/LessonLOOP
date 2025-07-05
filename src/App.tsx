@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import ClassPage from './components/ClassPage';
 import QuizAttempt from './components/QuizAttempt';
 import QuizResults from './components/QuizResults';
+import QuizAttemptView from './components/QuizAttemptView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 function AppRoutes() {
@@ -31,6 +32,10 @@ function AppRoutes() {
       <Route 
         path="/quiz/:quizId/results" 
         element={isAuthenticated ? <QuizResults /> : <Navigate to="/login" replace />} 
+      />
+      <Route 
+        path="/quiz/:quizId/attempt/:attemptId" 
+        element={isAuthenticated ? <QuizAttemptView /> : <Navigate to="/login" replace />} 
       />
       <Route path="/" element={<Navigate to="/login" replace />} />
     </Routes>
