@@ -8,6 +8,7 @@ import { ArrowLeft, CheckCircle, XCircle } from 'lucide-react';
 interface Quiz {
   _id: string;
   title: string;
+  class: string; // Add class ID to Quiz interface
   questions: Array<{
     questionText: string;
     options: Array<{ text: string }>;
@@ -62,7 +63,11 @@ export default function QuizAttemptView() {
   }, [quizId, attemptId, navigate]);
 
   const handleBack = () => {
-    navigate(-1);
+    if (quiz && quiz.class) {
+      navigate(`/class/${quiz.class}`);
+    } else {
+      navigate(-1); // Fallback if class ID is not available
+    }
   };
 
   if (!quiz || !quizResult) {

@@ -28,20 +28,36 @@ export default function QuizAttempt() {
   const [score, setScore] = useState<number | null>(null);
 
   useEffect(() => {
-    const fetchQuiz = async () => {
-      if (quizId) {
+    const checkAndFetchQuiz = async () => {
+      if (!quizId || !user) return;
+
+      // First, check if the student has already submitted this quiz
+      if (user.role === 'Student') {
         try {
-          const res = await axios.get(`http://localhost:5000/api/quizzes/quiz/${quizId}`);
-          setQuiz(res.data);
-          setSelectedAnswers(new Array(res.data.questions.length).fill(-1)); // Initialize with -1 (no answer selected)
+          const existingResultRes = await axios.get(`http://localhost:5000/api/quizzes/result/${quizId}`);
+          // If a result exists, redirect to the attempt view
+          if (existingResultRes.data && existingResultRes.data._id) {
+            navigate(`/quiz/${quizId}/attempt/${existingResultRes.data._id}`);
+            return;
+          }
         } catch (err) {
-          console.error('Error fetching quiz:', err);
-          navigate('/dashboard'); // Redirect if quiz not found or accessible
+          // If no result found (404) or other error, proceed to fetch quiz
+          console.log('No existing quiz result found or error fetching, proceeding to quiz attempt.', err);
         }
       }
+
+      // If no existing result (or user is teacher), fetch the quiz
+      try {
+        const res = await axios.get(`http://localhost:5000/api/quizzes/quiz/${quizId}`);
+        setQuiz(res.data);
+        setSelectedAnswers(new Array(res.data.questions.length).fill(-1)); // Initialize with -1 (no answer selected)
+      } catch (err) {
+        console.error('Error fetching quiz:', err);
+        navigate('/dashboard'); // Redirect if quiz not found or accessible
+      }
     };
-    fetchQuiz();
-  }, [quizId, navigate]);
+    checkAndFetchQuiz();
+  }, [quizId, navigate, user]);
 
   const handleAnswerChange = (questionIndex: number, optionIndex: number) => {
     const newSelectedAnswers = [...selectedAnswers];

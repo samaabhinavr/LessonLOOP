@@ -20,6 +20,10 @@ const UserSchema = new mongoose.Schema({
     enum: ['Student', 'Teacher'],
     required: true,
   },
+  profilePicture: {
+    type: String,
+    default: ''
+  },
 });
 
 module.exports = mongoose.model('User', UserSchema);

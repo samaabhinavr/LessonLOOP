@@ -48,6 +48,15 @@ interface ClassData {
   // Add other class properties as they become available from the backend
 }
 
+interface QuizResultForStudent {
+  _id: string;
+  quiz: { _id: string; title: string; questions: any[] };
+  score: number;
+  totalQuestions: number;
+  isLate: boolean;
+  createdAt: string;
+}
+
 interface GradebookEntry {
   id: string;
   name: string;
@@ -94,7 +103,7 @@ export default function ClassPage() {
 
   const [materials, setMaterials] = useState<Material[]>([]);
 
-  const [myGrades, setMyGrades] = useState<any[]>([]);
+  const [myGrades, setMyGrades] = useState<QuizResultForStudent[]>([]);
 
   const fetchClassData = useCallback(async () => {
     if (id) {
@@ -138,7 +147,7 @@ export default function ClassPage() {
   const fetchMyGrades = useCallback(async () => {
     if (id && !isTeacher) { // Only students can view their grades
       try {
-        const res = await axios.get(`http://localhost:5000/api/classes/${id}/my-grades`);
+        const res = await axios.get(`http://localhost:5000/api/quizzes/my-results/${id}`);
         setMyGrades(res.data);
       } catch (err) {
         console.error('Error fetching my grades:', err);
@@ -613,12 +622,12 @@ export default function ClassPage() {
                         </tr>
                       ) : (
                         myGrades.map((grade) => (
-                          <tr key={grade.quizId} className="hover:bg-slate-50">
+                          <tr key={grade._id} className="hover:bg-slate-50 cursor-pointer" onClick={() => navigate(`/quiz/${grade.quiz._id}/attempt/${grade._id}`)}>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm font-medium text-slate-900">{grade.quizTitle}</div>
+                              <div className="text-sm font-medium text-slate-900">{grade.quiz.title}</div>
                             </td>
-                            <td className={`px-6 py-4 whitespace-nowrap text-center text-sm ${getGradeColor(grade.score)}`}>
-                              {grade.score}%
+                            <td className={`px-6 py-4 whitespace-nowrap text-center text-sm ${getGradeColor((grade.score / grade.totalQuestions) * 100)}`}>
+                              {grade.score} / {grade.totalQuestions}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-slate-500">
                               {grade.isLate ? <span className="text-red-500">Late</span> : <span className="text-green-500">On Time</span>}

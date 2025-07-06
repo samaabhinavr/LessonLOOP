@@ -395,3 +395,28 @@ exports.generateMCQ = async (req, res) => {
     res.status(500).send('Server error');
   }
 };
+
+// @desc    Get all quiz results for a student in a specific class
+// @route   GET /api/quizzes/my-results/:classId
+// @access  Private (Student)
+exports.getStudentQuizResultsInClass = async (req, res) => {
+  if (req.user.role !== 'Student') {
+    return res.status(403).json({ msg: 'Only students can view their own quiz results' });
+  }
+
+  try {
+    const quizResults = await QuizResult.find({ student: req.user.id }).populate({
+      path: 'quiz',
+      match: { class: req.params.classId },
+      select: 'title questions', // Select only necessary quiz fields
+    });
+
+    // Filter out results where the quiz field is null (due to the match condition)
+    const filteredResults = quizResults.filter(result => result.quiz !== null);
+
+    res.json(filteredResults);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};

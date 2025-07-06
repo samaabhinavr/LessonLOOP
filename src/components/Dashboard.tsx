@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, BookOpen, Users, ChevronRight, Calendar, PlusCircle } from 'lucide-react';
+import { LogOut, BookOpen, Users, ChevronRight, GraduationCap, PlusCircle, User as UserIcon, Settings, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
@@ -13,17 +13,19 @@ interface Class {
 }
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const isTeacher = user?.role === 'Teacher';
 
   const [classes, setClasses] = useState<Class[]>([]);
   const [showCreateClassModal, setShowCreateClassModal] = useState(false);
   const [showJoinClassModal, setShowJoinClassModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [newClassName, setNewClassName] = useState('');
   const [joinInviteCode, setJoinInviteCode] = useState('');
   const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null);
   const [averageGrade, setAverageGrade] = useState<number | null>(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
   useEffect(() => {
     const fetchClasses = async () => {
@@ -85,6 +87,27 @@ export default function Dashboard() {
     }
   };
 
+  const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const file = e.target.files[0];
+      const formData = new FormData();
+      formData.append('profilePicture', file);
+
+      try {
+        const token = localStorage.getItem('token');
+        const res = await axios.post('http://localhost:5000/api/auth/upload-profile-picture', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            'x-auth-token': token,
+          },
+        });
+        setAuthToken(res.data.token);
+      } catch (err) {
+        console.error('Error uploading profile picture:', err);
+      }
+    }
+  };
+
   const totalStudents = classes.reduce((sum, cls) => sum + cls.students.length, 0);
 
   return (
@@ -94,23 +117,24 @@ export default function Dashboard() {
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="flex justify-between items-center h-16">
             <div class="flex items-center">
-              <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center mr-3">
-                <BookOpen class="w-6 h-6 text-white" />
-              </div>
-              <h1 class="text-2xl font-bold text-slate-900">LessonLoop</h1>
+              <img src="/image.png" alt="LessonLoop Logo" class="h-10" />
             </div>
-            <div class="flex items-center space-x-4">
-              <div class="text-right">
-                <p class="text-sm font-medium text-slate-900">{user?.name}</p>
-                <p class="text-xs text-slate-500 capitalize">{user?.role} • {user?.email}</p>
-              </div>
-              <button
-                onClick={logout}
-                class="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-                title="Sign out"
-              >
-                <LogOut class="w-5 h-5" />
+            <div class="relative">
+              <button onClick={() => setProfileMenuOpen(!profileMenuOpen)} class="flex items-center space-x-2">
+                <img src={user?.profilePicture ? `http://localhost:5000${user.profilePicture}` : 'https://i.pravatar.cc/150?u=a042581f4e29026704d'} alt="Profile" class="w-10 h-10 rounded-full" />
+                <span class="text-sm font-medium text-slate-900">{user?.name}</span>
               </button>
+              {profileMenuOpen && (
+                <div class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1">
+                  <div class="px-4 py-2 text-sm text-slate-700">
+                    <p class="font-semibold">{user?.name}</p>
+                    <p class="text-xs text-slate-500">{user?.email}</p>
+                  </div>
+                  <div class="border-t border-slate-200"></div>
+                  <button onClick={() => setShowProfileModal(true)} class="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">Profile</button>
+                  <button onClick={logout} class="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">Logout</button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -121,7 +145,7 @@ export default function Dashboard() {
         {/* Welcome Section */}
         <div class="mb-8">
           <h2 class="text-3xl font-bold text-slate-900 mb-2">
-            Welcome back, {user?.name?.split(' ')[0]}!
+            Welcome back, {user?.name}!
           </h2>
           <p class="text-lg text-slate-600">
             {isTeacher 
@@ -183,7 +207,7 @@ export default function Dashboard() {
             <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
               <div class="flex items-center">
                 <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
-                  <Calendar class="w-6 h-6 text-green-600" />
+                  <GraduationCap class="w-6 h-6 text-green-600" />
                 </div>
                 <div>
                   <p class="text-2xl font-bold text-slate-900">
@@ -213,7 +237,7 @@ export default function Dashboard() {
                 {/* Class Info */}
                 <h3 class="text-lg font-semibold text-slate-900 mb-2">{cls.name}</h3>
                 {isTeacher && <p class="text-sm text-slate-600 mb-2">Invite Code: <span class="font-mono font-semibold text-blue-600">{cls.inviteCode}</span></p>}
-                <p class="text-sm text-slate-600 mb-4 line-clamp-2">{isTeacher ? `Students enrolled: ${cls.students.length}` : `Teacher: ${cls.teacher}`}</p>
+                <p class="text-sm text-slate-600 mb-4 line-clamp-2">{isTeacher ? `Students enrolled: ${cls.students.length}` : `Teacher: ${cls.teacher.name}`}</p>
 
                 {/* Enter Class Button */}
                 <button
@@ -308,6 +332,40 @@ export default function Dashboard() {
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Modal */}
+      {showProfileModal && (
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div class="bg-white rounded-xl p-8 shadow-2xl w-full max-w-md">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">Profile</h2>
+            <div class="flex items-center space-x-4 mb-6">
+              <div class="relative">
+                <img src={user?.profilePicture ? `http://localhost:5000${user.profilePicture}` : 'https://i.pravatar.cc/150?u=a042581f4e29026704d'} alt="Profile" class="w-20 h-20 rounded-full" />
+                <label htmlFor="profilePictureInput" class="absolute bottom-0 right-0 bg-blue-600 text-white rounded-full p-1 cursor-pointer hover:bg-blue-700">
+                  <Upload class="w-4 h-4" />
+                  <input id="profilePictureInput" type="file" class="hidden" onChange={handleProfilePictureUpload} />
+                </label>
+              </div>
+              <div>
+                <p class="text-xl font-bold text-slate-900">{user?.name}</p>
+                <p class="text-sm text-slate-500">{user?.email}</p>
+              </div>
+            </div>
+            <form class="space-y-4">
+              <div>
+                <label htmlFor="currentPassword" class="block text-sm font-medium text-slate-700 mb-2">Current Password</label>
+                <input type="password" id="currentPassword" class="w-full border border-slate-300 rounded-lg p-3" />
+              </div>
+              <div>
+                <label htmlFor="newPassword" class="block text-sm font-medium text-slate-700 mb-2">New Password</label>
+                <input type="password" id="newPassword" class="w-full border border-slate-300 rounded-lg p-3" />
+              </div>
+              <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors">Update Password</button>
+            </form>
+            <button onClick={() => setShowProfileModal(false)} class="mt-4 w-full text-slate-600 hover:text-slate-800">Close</button>
           </div>
         </div>
       )}

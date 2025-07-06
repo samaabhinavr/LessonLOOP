@@ -8,7 +8,8 @@ interface User {
   id: string;
   email: string;
   role: UserRole;
-  name?: string; // Name might not be in JWT payload directly, but can be added
+  name?: string;
+  profilePicture?: string;
 }
 
 interface DecodedToken extends JwtPayload {
@@ -17,6 +18,7 @@ interface DecodedToken extends JwtPayload {
     email: string;
     role: UserRole;
     name?: string;
+    profilePicture?: string;
   };
 }
 
@@ -27,6 +29,8 @@ interface AuthContextType {
   register: (name: string, email: string, password: string, role: UserRole) => Promise<void>;
   loginWithGoogle: (role: UserRole) => Promise<void>; // Keep for future implementation
   logout: () => void;
+  updateUser: (updatedUser: Partial<User>) => void;
+  setAuthToken: (token: string | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email: decoded.user.email,
             role: decoded.user.role,
             name: decoded.user.name,
+            profilePicture: decoded.user.profilePicture,
           });
           // Set auth token for axios
           axios.defaults.headers.common['x-auth-token'] = token;
@@ -69,9 +74,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (token) {
       localStorage.setItem('token', token);
       axios.defaults.headers.common['x-auth-token'] = token;
+      try {
+        const decoded = jwtDecode<DecodedToken>(token);
+        setUser({
+          id: decoded.user.id,
+          email: decoded.user.email,
+          role: decoded.user.role,
+          name: decoded.user.name,
+          profilePicture: decoded.user.profilePicture,
+        });
+      } catch (error) {
+        console.error('Failed to decode token in setAuthToken:', error);
+        localStorage.removeItem('token');
+        setIsAuthenticated(false);
+        setUser(null);
+      }
     } else {
       localStorage.removeItem('token');
       delete axios.defaults.headers.common['x-auth-token'];
+      setIsAuthenticated(false);
+      setUser(null);
     }
   };
 
@@ -86,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: decoded.user.email,
         role: decoded.user.role,
         name: decoded.user.name,
+        profilePicture: decoded.user.profilePicture,
       });
     } catch (error) {
       const axiosError = error as AxiosError;
@@ -105,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: decoded.user.email,
         role: decoded.user.role,
         name: decoded.user.name,
+        profilePicture: decoded.user.profilePicture,
       });
     } catch (error) {
       const axiosError = error as AxiosError;
@@ -133,8 +157,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const updateUser = (updatedUser: Partial<User>) => {
+    setUser(prevUser => prevUser ? { ...prevUser, ...updatedUser } : null);
+  };
+
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, register, loginWithGoogle, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, register, loginWithGoogle, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
