@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, BookOpen, Users, ChevronRight, GraduationCap, PlusCircle, User as UserIcon, Settings, Upload } from 'lucide-react';
+import { LogOut, BookOpen, Users, ChevronRight, GraduationCap, PlusCircle, User as UserIcon, Settings, Upload, Bell } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
@@ -12,8 +12,18 @@ interface Class {
   inviteCode: string;
 }
 
+interface Notification {
+  _id: string;
+  recipient: string;
+  type: 'newQuiz' | 'newPoll';
+  message: string;
+  link?: string;
+  read: boolean;
+  createdAt: string;
+}
+
 export default function Dashboard() {
-  const { user, logout, updateUser } = useAuth();
+  const { user, logout, updateUser, setAuthToken } = useAuth();
   const navigate = useNavigate();
   const isTeacher = user?.role === 'Teacher';
 
@@ -26,6 +36,8 @@ export default function Dashboard() {
   const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null);
   const [averageGrade, setAverageGrade] = useState<number | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
 
   useEffect(() => {
     const fetchClasses = async () => {
@@ -56,7 +68,55 @@ export default function Dashboard() {
 
     fetchClasses();
     fetchAverageGrade();
+    if (!isTeacher) {
+      fetchNotifications();
+    }
   }, [isTeacher]);
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/notifications');
+      setNotifications(res.data);
+    } catch (err) {
+      console.error('Error fetching notifications:', err);
+    }
+  };
+
+  const markNotificationAsRead = async (id: string) => {
+    try {
+      await axios.put(`http://localhost:5000/api/notifications/mark-read/${id}`);
+      setNotifications(notifications.map(notif => notif._id === id ? { ...notif, read: true } : notif));
+    } catch (err) {
+      console.error('Error marking notification as read:', err);
+    }
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    try {
+      await axios.put('http://localhost:5000/api/notifications/mark-all-read');
+      setNotifications(notifications.map(notif => ({ ...notif, read: true })));
+    } catch (err) {
+      console.error('Error marking all notifications as read:', err);
+    }
+  };
+
+  const deleteNotification = async (id: string) => {
+    try {
+      await axios.delete(`http://localhost:5000/api/notifications/${id}`);
+      setNotifications(notifications.filter(notif => notif._id !== id));
+    } catch (err) {
+      console.error('Error deleting notification:', err);
+    }
+  };
+
+  const deleteAllReadNotifications = async () => {
+    try {
+      await axios.delete('http://localhost:5000/api/notifications/read');
+      setNotifications(notifications.filter(notif => !notif.read));
+    } catch (err) {
+      console.error('Error deleting all read notifications:', err);
+    }
+  };
 
   const handleEnterCourse = (classId: string) => {
     navigate(`/class/${classId}`);
@@ -102,6 +162,7 @@ export default function Dashboard() {
           },
         });
         setAuthToken(res.data.token);
+        updateUser({ profilePicture: res.data.profilePicture });
       } catch (err) {
         console.error('Error uploading profile picture:', err);
       }
@@ -119,22 +180,36 @@ export default function Dashboard() {
             <div class="flex items-center">
               <img src="/image.png" alt="LessonLoop Logo" class="h-10" />
             </div>
-            <div class="relative">
-              <button onClick={() => setProfileMenuOpen(!profileMenuOpen)} class="flex items-center space-x-2">
-                <img src={user?.profilePicture ? `http://localhost:5000${user.profilePicture}` : 'https://i.pravatar.cc/150?u=a042581f4e29026704d'} alt="Profile" class="w-10 h-10 rounded-full" />
-                <span class="text-sm font-medium text-slate-900">{user?.name}</span>
-              </button>
-              {profileMenuOpen && (
-                <div class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1">
-                  <div class="px-4 py-2 text-sm text-slate-700">
-                    <p class="font-semibold">{user?.name}</p>
-                    <p class="text-xs text-slate-500">{user?.email}</p>
-                  </div>
-                  <div class="border-t border-slate-200"></div>
-                  <button onClick={() => setShowProfileModal(true)} class="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">Profile</button>
-                  <button onClick={logout} class="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">Logout</button>
+            <div class="relative flex items-center space-x-4">
+              {!isTeacher && (
+                <div class="relative">
+                  <button onClick={() => setShowNotificationsModal(true)} class="p-2 rounded-full hover:bg-slate-100 transition-colors">
+                    <Bell class="w-6 h-6 text-slate-600" />
+                    {notifications.filter(n => !n.read).length > 0 && (
+                      <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                        {notifications.filter(n => !n.read).length}
+                      </span>
+                    )}
+                  </button>
                 </div>
               )}
+              <div class="relative">
+                <button onClick={() => setProfileMenuOpen(!profileMenuOpen)} class="flex items-center space-x-2">
+                  <img src={user?.profilePicture ? `http://localhost:5000${user.profilePicture}` : 'https://i.pravatar.cc/150?u=a042581f4e29026704d'} alt="Profile" class="w-10 h-10 rounded-full" />
+                  <span class="text-sm font-medium text-slate-900">{user?.name}</span>
+                </button>
+                {profileMenuOpen && (
+                  <div class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1">
+                    <div class="px-4 py-2 text-sm text-slate-700">
+                      <p class="font-semibold">{user?.name}</p>
+                      <p class="text-xs text-slate-500">{user?.email}</p>
+                    </div>
+                    <div class="border-t border-slate-200"></div>
+                    <button onClick={() => setShowProfileModal(true)} class="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">Profile</button>
+                    <button onClick={logout} class="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">Logout</button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -366,6 +441,85 @@ export default function Dashboard() {
               <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors">Update Password</button>
             </form>
             <button onClick={() => setShowProfileModal(false)} class="mt-4 w-full text-slate-600 hover:text-slate-800">Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Notifications Modal */}
+      {showNotificationsModal && (
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div class="bg-white rounded-xl p-8 shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">Notifications</h2>
+            {notifications.length === 0 ? (
+              <p class="text-slate-600">No notifications yet.</p>
+            ) : (
+              <div class="space-y-4">
+                {notifications.map((notification) => (
+                  <div
+                    key={notification._id}
+                    class={`p-4 rounded-lg border ${notification.read ? 'bg-slate-50 border-slate-200' : 'bg-blue-50 border-blue-200'} flex justify-between items-center`}
+                  >
+                    <div>
+                      <p class="font-medium text-slate-800">{notification.message}</p>
+                      <p class="text-sm text-slate-500">{new Date(notification.createdAt).toLocaleString()}</p>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                      {!notification.read && (
+                        <button
+                          onClick={() => markNotificationAsRead(notification._id)}
+                          class="bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1 rounded-full"
+                        >
+                          Mark as Read
+                        </button>
+                      )}
+                      {notification.read && (
+                        <button
+                          onClick={() => deleteNotification(notification._id)}
+                          class="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1 rounded-full"
+                        >
+                          Delete
+                        </button>
+                      )}
+                      {notification.link && notification.read && (
+                        <button
+                          onClick={() => {
+                            navigate(notification.link);
+                            setShowNotificationsModal(false);
+                          }}
+                          class="bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs px-3 py-1 rounded-full"
+                        >
+                          View
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div class="flex justify-end space-x-4 mt-6">
+              {notifications.filter(n => n.read).length > 0 && (
+                <button
+                  onClick={deleteAllReadNotifications}
+                  class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+                >
+                  Delete All Read
+                </button>
+              )}
+              {notifications.filter(n => !n.read).length > 0 && (
+                <button
+                  onClick={markAllNotificationsAsRead}
+                  class="bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+                >
+                  Mark All as Read
+                </button>
+              )}
+              <button
+                onClick={() => setShowNotificationsModal(false)}
+                class="bg-slate-300 hover:bg-slate-400 text-slate-800 font-semibold py-2 px-4 rounded-lg transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

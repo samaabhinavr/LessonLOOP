@@ -2,6 +2,7 @@
 const Quiz = require('../models/Quiz');
 const Class = require('../models/Class');
 const QuizResult = require('../models/QuizResult');
+const Notification = require('../models/Notification');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -49,6 +50,19 @@ exports.createQuiz = async (req, res) => {
     });
 
     const quiz = await newQuiz.save();
+
+    // Notify students in the class
+    const currentClass = await Class.findById(classId);
+    if (currentClass && currentClass.students.length > 0) {
+      const notifications = currentClass.students.map(studentId => ({
+        recipient: studentId,
+        type: 'newQuiz',
+        message: `A new quiz "${title}" has been posted in ${currentClass.name}.`,
+        link: `/class/${classId}`, // Link to the class page where quizzes are listed
+      }));
+      await Notification.insertMany(notifications);
+    }
+
     res.status(201).json(quiz);
   } catch (err) {
     console.error(err.message);

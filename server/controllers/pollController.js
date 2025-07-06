@@ -1,4 +1,6 @@
 const Poll = require('../models/Poll');
+const Class = require('../models/Class');
+const Notification = require('../models/Notification');
 
 exports.createPoll = async (data) => {
   const { classId, question, options, correctAnswer, userId } = data;
@@ -11,6 +13,19 @@ exports.createPoll = async (data) => {
     isActive: true,
   });
   const poll = await newPoll.save();
+
+  // Notify students in the class
+  const currentClass = await Class.findById(classId);
+  if (currentClass && currentClass.students.length > 0) {
+    const notifications = currentClass.students.map(studentId => ({
+      recipient: studentId,
+      type: 'newPoll',
+      message: `A new live poll has started in ${currentClass.name}.`,
+      link: `/class/${classId}`, // Link to the class page where live poll is active
+    }));
+    await Notification.insertMany(notifications);
+  }
+
   return poll;
 };
 

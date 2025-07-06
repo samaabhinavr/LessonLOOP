@@ -45,6 +45,7 @@ app.use('/api/quizzes', require('./routes/quizzes'));
 app.use('/api/student', require('./routes/student'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/polls', require('./routes/polls'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 
 // Basic Route
