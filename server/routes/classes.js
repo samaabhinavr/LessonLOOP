@@ -40,4 +40,9 @@ router.get('/:id/gradebook', auth, classController.getGradebook);
 // @access  Private (Student)
 router.get('/:id/my-grades', auth, authorize('Student'), classController.getMyGrades);
 
+// @route   GET api/classes/:id/export-data
+// @desc    Export class data (for higher-ups)
+// @access  Private (Teacher)
+router.get('/:id/export-data', auth, authorize('Teacher'), classController.exportClassData);
+
 module.exports = router;

@@ -5,8 +5,13 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
 const multer = require('multer');
+const http = require('http');
+const initializeSocket = require('./socket');
 
 const app = express();
+const server = http.createServer(app);
+initializeSocket(server);
+
 const PORT = process.env.PORT || 5000;
 
 // Middleware
@@ -38,6 +43,8 @@ app.use('/api/classes', require('./routes/classes'));
 app.use('/api/resources', require('./routes/resources'));
 app.use('/api/quizzes', require('./routes/quizzes'));
 app.use('/api/student', require('./routes/student'));
+app.use('/api/analytics', require('./routes/analytics'));
+app.use('/api/polls', require('./routes/polls'));
 
 
 // Basic Route
@@ -50,7 +57,7 @@ mongoose.connect("mongodb://127.0.0.1:27017/lessonloop")
   .then(() => {
     console.log('MongoDB connected successfully');
     console.log('JWT_SECRET loaded:', process.env.JWT_SECRET ? 'Yes' : 'No');
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`Server is running on port: ${PORT}`);
     });
   })

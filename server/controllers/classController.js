@@ -212,3 +212,117 @@ exports.getMyGrades = async (req, res) => {
   }
 };
 
+exports.exportClassData = async (req, res) => {
+  try {
+    const classId = req.params.id;
+
+    // Ensure user is authorized (teacher of the class)
+    const classItem = await Class.findById(classId).populate('teacher', 'name email').populate('students', 'name email');
+
+    if (!classItem) {
+      return res.status(404).json({ msg: 'Class not found' });
+    }
+
+    if (classItem.teacher._id.toString() !== req.user.id) {
+      return res.status(403).json({ msg: 'Not authorized to export data for this class' });
+    }
+
+    let csvContent = '';
+
+    // Section 1: Class Overview
+    csvContent += `Class Name:,${classItem.name}\n`;
+    csvContent += `Teacher:,${classItem.teacher.name}\n`;
+    csvContent += `Invite Code:,${classItem.inviteCode}\n`;
+    csvContent += `Export Date:,${new Date().toLocaleString()}\n\n`;
+
+    // Section 2: Class Performance Summary (Analytics)
+    csvContent += 'Class Performance Summary\n';
+    csvContent += 'Category,Topic,Average Score (%)\n';
+
+    const quizzesInClass = await Quiz.find({ class: classId });
+    const quizIds = quizzesInClass.map(quiz => quiz._id);
+    const allQuizResults = await QuizResult.find({ quiz: { $in: quizIds } }).populate('quiz', 'topic');
+
+    const topicScores = {};
+    allQuizResults.forEach(result => {
+      const { topic } = result.quiz;
+      const score = (result.score / result.totalQuestions) * 100;
+      if (!topicScores[topic]) {
+        topicScores[topic] = [];
+      }
+      topicScores[topic].push(score);
+    });
+
+    const analytics = Object.keys(topicScores).map(topic => {
+      const scores = topicScores[topic];
+      const average = scores.reduce((a, b) => a + b, 0) / scores.length;
+      return { topic, average, quizzes: scores.length };
+    });
+
+    const strongest = analytics.filter(t => t.average >= 80).sort((a, b) => b.average - a.average);
+    const weakest = analytics.filter(t => t.average < 50).sort((a, b) => a.average - b.average);
+    const almostMastered = analytics.filter(t => t.average >= 50 && t.average < 80).sort((a, b) => b.average - a.average);
+
+    strongest.forEach(t => { csvContent += `Strongest,${t.topic},${t.average.toFixed(2)}\n`; });
+    weakest.forEach(t => { csvContent += `Weakest,${t.topic},${t.average.toFixed(2)}\n`; });
+    almostMastered.forEach(t => { csvContent += `Almost Mastered,${t.topic},${t.average.toFixed(2)}\n`; });
+    csvContent += '\n';
+
+    // Section 3: Individual Student Performance
+    csvContent += 'Individual Student Performance\n';
+
+    const studentQuizResultsMap = new Map(); // Map<studentId, Map<quizId, score>>
+    const studentTotalScores = new Map(); // Map<studentId, { totalScored, totalPossible }>
+
+    allQuizResults.forEach(result => {
+      const studentId = result.student.toString();
+      const quizId = result.quiz._id.toString();
+      const score = (result.score / result.totalQuestions) * 100;
+
+      if (!studentQuizResultsMap.has(studentId)) {
+        studentQuizResultsMap.set(studentId, new Map());
+      }
+      studentQuizResultsMap.get(studentId).set(quizId, score);
+
+      if (!studentTotalScores.has(studentId)) {
+        studentTotalScores.set(studentId, { totalScored: 0, totalPossible: 0 });
+      }
+      const currentTotals = studentTotalScores.get(studentId);
+      currentTotals.totalScored += result.score;
+      currentTotals.totalPossible += result.totalQuestions;
+    });
+
+    // Prepare headers for individual student performance
+    let studentHeaders = 'Student Name,Student Email';
+    const quizHeaders = quizzesInClass.map(quiz => `${quiz.title} (${quiz.topic})`);
+    studentHeaders += ',' + quizHeaders.join(',') + ',Overall Average (%)\n';
+    csvContent += studentHeaders;
+
+    // Populate student rows
+    classItem.students.forEach(student => {
+      let studentRow = `"${student.name}","${student.email}"`;
+      const studentResults = studentQuizResultsMap.get(student._id.toString()) || new Map();
+
+      quizIds.forEach(quizId => {
+        const score = studentResults.has(quizId.toString()) ? studentResults.get(quizId.toString()).toFixed(2) : 'N/A';
+        studentRow += `,${score}`;
+      });
+
+      const overallTotals = studentTotalScores.get(student._id.toString());
+      const overallAverage = overallTotals && overallTotals.totalPossible > 0
+        ? ((overallTotals.totalScored / overallTotals.totalPossible) * 100).toFixed(2)
+        : 'N/A';
+      studentRow += `,${overallAverage}\n`;
+      csvContent += studentRow;
+    });
+
+    res.header('Content-Type', 'text/csv');
+    res.attachment(`${classItem.name.replace(/\s/g, '_')}_Class_Report.csv`);
+    res.send(csvContent);
+
+  } catch (err) {
+    console.error('Error exporting class data:', err.message);
+    res.status(500).send('Server error');
+  }
+};
+

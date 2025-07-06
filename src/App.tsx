@@ -6,7 +6,9 @@ import ClassPage from './components/ClassPage';
 import QuizAttempt from './components/QuizAttempt';
 import QuizResults from './components/QuizResults';
 import QuizAttemptView from './components/QuizAttemptView';
+import Analytics from './components/Analytics';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { PollProvider } from './context/PollContext';
 
 function AppRoutes() {
   const { isAuthenticated } = useAuth();
@@ -37,6 +39,10 @@ function AppRoutes() {
         path="/quiz/:quizId/attempt/:attemptId" 
         element={isAuthenticated ? <QuizAttemptView /> : <Navigate to="/login" replace />} 
       />
+      <Route 
+        path="/class/:classId/analytics" 
+        element={isAuthenticated ? <Analytics /> : <Navigate to="/login" replace />} 
+      />
       <Route path="/" element={<Navigate to="/login" replace />} />
     </Routes>
   );
@@ -45,11 +51,13 @@ function AppRoutes() {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-          <AppRoutes />
-        </div>
-      </Router>
+      <PollProvider>
+        <Router>
+          <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+            <AppRoutes />
+          </div>
+        </Router>
+      </PollProvider>
     </AuthProvider>
   );
 }

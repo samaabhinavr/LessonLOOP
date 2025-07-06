@@ -112,7 +112,7 @@ export default function QuizResults() {
                         {result.score} / {result.totalQuestions}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-slate-500">
-                        {new Date(result.createdAt).toLocaleDateString()}
+                        {new Date(result.createdAt).toLocaleString()}
                       </td>
                     </tr>
                   ))}

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, BookOpen, FileText, BarChart3, ClipboardList, Download, Eye, CheckCircle, XCircle, Clock, PlusCircle, Sparkles } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, BarChart3, ClipboardList, Download, Eye, CheckCircle, XCircle, Clock, PlusCircle, Sparkles, Radio } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
+import LivePoll from './LivePoll';
 
 interface QuizQuestion {
   questionText: string;
@@ -13,6 +14,7 @@ interface QuizQuestion {
 interface Quiz {
   _id: string;
   title: string;
+  topic: string;
   status: 'Draft' | 'Published' | 'Archived';
   dueDate?: string;
   questions: QuizQuestion[];
@@ -50,7 +52,7 @@ interface ClassData {
 
 interface QuizResultForStudent {
   _id: string;
-  quiz: { _id: string; title: string; questions: any[] };
+  quiz: { _id: string; title: string; topic: string; questions: any[] };
   score: number;
   totalQuestions: number;
   isLate: boolean;
@@ -64,7 +66,7 @@ interface GradebookEntry {
   averageScore: number;
 }
 
-type TabType = 'quizzes' | 'gradebook' | 'materials' | 'my-grades';
+type TabType = 'quizzes' | 'gradebook' | 'materials' | 'my-grades' | 'analytics' | 'live-poll';
 
 export default function ClassPage() {
   const [activeTab, setActiveTab] = useState<TabType>('quizzes');
@@ -276,6 +278,7 @@ export default function ClassPage() {
       const quizData = {
         classId: id,
         title: newQuizTitle,
+        topic: aiTopic,
         questions: newQuizQuestions,
         dueDate: newQuizDueDate || undefined,
         dueTime: newQuizDueTime || undefined,
@@ -441,6 +444,19 @@ export default function ClassPage() {
                 </button>
               )}
               <button
+                onClick={() => navigate(`/class/${id}/analytics`)}
+                className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === 'analytics'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center">
+                  <BarChart3 className="w-4 h-4 mr-2" />
+                  Analytics
+                </div>
+              </button>
+              <button
                 onClick={() => setActiveTab('materials')}
                 className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
                   activeTab === 'materials'
@@ -451,6 +467,19 @@ export default function ClassPage() {
                 <div className="flex items-center">
                   <FileText className="w-4 h-4 mr-2" />
                   Materials
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('live-poll')}
+                className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === 'live-poll'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center">
+                  <Radio className="w-4 h-4 mr-2" />
+                  Live Poll
                 </div>
               </button>
               
@@ -502,6 +531,7 @@ export default function ClassPage() {
                               <span className="ml-1">{quiz.status}</span>
                             </span>
                           </div>
+                          <div className="text-xs text-slate-500">Topic: {quiz.topic}</div>
                           <div className="flex items-center text-sm text-slate-600 space-x-4">
                             {quiz.dueDate && <span>Due: {new Date(quiz.dueDate).toLocaleString()}</span>}
                             <span>{quiz.questions.length} questions</span>
@@ -553,9 +583,17 @@ export default function ClassPage() {
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-lg font-semibold text-slate-900">Student Grades</h3>
                   {isTeacher && (
-                    <button className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                      Export Grades
-                    </button>
+                    <div className="flex space-x-2">
+                      <button className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                        Export Grades
+                      </button>
+                      <button
+                        onClick={handleExportData}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                      >
+                        Export Class Data
+                      </button>
+                    </div>
                   )}
                 </div>
                 <div className="overflow-x-auto">
@@ -625,6 +663,7 @@ export default function ClassPage() {
                           <tr key={grade._id} className="hover:bg-slate-50 cursor-pointer" onClick={() => navigate(`/quiz/${grade.quiz._id}/attempt/${grade._id}`)}>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm font-medium text-slate-900">{grade.quiz.title}</div>
+                              <div className="text-xs text-slate-500">Topic: {grade.quiz.topic}</div>
                             </td>
                             <td className={`px-6 py-4 whitespace-nowrap text-center text-sm ${getGradeColor((grade.score / grade.totalQuestions) * 100)}`}>
                               {grade.score} / {grade.totalQuestions}
@@ -688,6 +727,10 @@ export default function ClassPage() {
                   )}
                 </div>
               </div>
+            )}
+
+            {activeTab === 'live-poll' && (
+              <LivePoll />
             )}
           </div>
         </div>
