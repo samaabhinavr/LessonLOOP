@@ -11,7 +11,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // @route   POST /api/quizzes
 // @access  Private (Teacher)
 exports.createQuiz = async (req, res) => {
-  const { classId, title, questions, dueDate, dueTime, topic } = req.body;
+  const { classId, title, questions, dueDate, dueTime, topic, difficulty } = req.body;
 
   // Check if user is a teacher
   if (req.user.role !== 'Teacher') {
@@ -42,6 +42,7 @@ exports.createQuiz = async (req, res) => {
       class: classId,
       title,
       topic,
+      difficulty,
       questions,
       createdBy: req.user.id,
       dueDate: dueDateTime,
@@ -62,7 +63,7 @@ exports.getQuizzes = async (req, res) => {
   try {
     console.log("Backend: getQuizzes - Received classId:", req.params.classId);
     console.log("Backend: getQuizzes - Attempting to find quizzes and populate createdBy...");
-    const quizzes = await Quiz.find({ class: req.params.classId }).populate('createdBy', 'name email');
+    const quizzes = await Quiz.find({ class: req.params.classId }).populate('createdBy', 'name email').select('+difficulty');
     console.log("Backend: getQuizzes - Found quizzes:", quizzes.length);
     res.json(quizzes);
   } catch (err) {
@@ -278,7 +279,7 @@ exports.getQuizResultsForQuiz = async (req, res) => {
   }
 
   try {
-    const quizResults = await QuizResult.find({ quiz: req.params.quizId }).populate('student', 'name email').select('+createdAt'); // Select createdAt
+    const quizResults = await QuizResult.find({ quiz: req.params.quizId }).populate('student', 'name email').select('+createdAt +isLate'); // Select createdAt and isLate
     res.json(quizResults);
   } catch (err) {
     console.error(err.message);
@@ -409,10 +410,10 @@ exports.getStudentQuizResultsInClass = async (req, res) => {
   }
 
   try {
-    const quizResults = await QuizResult.find({ student: req.user.id }).populate({
+    const quizResults = await QuizResult.find({ student: req.user.id }).select('+isLate').populate({
       path: 'quiz',
       match: { class: req.params.classId },
-      select: 'title questions topic', // Select only necessary quiz fields
+      select: 'title questions topic difficulty dueDate', // Select necessary quiz fields including dueDate
     });
 
     // Filter out results where the quiz field is null (due to the match condition)

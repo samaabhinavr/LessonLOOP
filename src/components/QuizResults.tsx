@@ -12,6 +12,7 @@ interface QuizResult {
   totalQuestions: number;
   answers: Array<{ questionIndex: number; selectedOptionIndex: number }>;
   createdAt: string;
+  isLate: boolean;
 }
 
 export default function QuizResults() {
@@ -113,6 +114,11 @@ export default function QuizResults() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-slate-500">
                         {new Date(result.createdAt).toLocaleString()}
+                        {result.isLate && (
+                          <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            Late
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

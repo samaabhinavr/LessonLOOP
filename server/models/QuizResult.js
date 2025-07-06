@@ -32,6 +32,10 @@ const QuizResultSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  isLate: {
+    type: Boolean,
+    default: false,
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('QuizResult', QuizResultSchema);

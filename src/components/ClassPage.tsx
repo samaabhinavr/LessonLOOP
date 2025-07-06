@@ -15,6 +15,7 @@ interface Quiz {
   _id: string;
   title: string;
   topic: string;
+  difficulty: string;
   status: 'Draft' | 'Published' | 'Archived';
   dueDate?: string;
   questions: QuizQuestion[];
@@ -52,7 +53,7 @@ interface ClassData {
 
 interface QuizResultForStudent {
   _id: string;
-  quiz: { _id: string; title: string; topic: string; questions: any[] };
+  quiz: { _id: string; title: string; topic: string; difficulty: string; questions: any[] };
   score: number;
   totalQuestions: number;
   isLate: boolean;
@@ -301,6 +302,7 @@ export default function ClassPage() {
         classId: id,
         title: newQuizTitle,
         topic: aiTopic,
+        difficulty: aiDifficulty,
         questions: newQuizQuestions,
         dueDate: newQuizDueDate || undefined,
         dueTime: newQuizDueTime || undefined,
@@ -553,7 +555,7 @@ export default function ClassPage() {
                               <span className="ml-1">{quiz.status}</span>
                             </span>
                           </div>
-                          <div className="text-xs text-slate-500">Topic: {quiz.topic}</div>
+                          <div className="text-xs text-slate-500">Topic: {quiz.topic} | Difficulty: {quiz.difficulty}</div>
                           <div className="flex items-center text-sm text-slate-600 space-x-4">
                             {quiz.dueDate && <span>Due: {new Date(quiz.dueDate).toLocaleString()}</span>}
                             <span>{quiz.questions.length} questions</span>
@@ -685,7 +687,7 @@ export default function ClassPage() {
                           <tr key={grade._id} className="hover:bg-slate-50 cursor-pointer" onClick={() => navigate(`/quiz/${grade.quiz._id}/attempt/${grade._id}`)}>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm font-medium text-slate-900">{grade.quiz.title}</div>
-                              <div className="text-xs text-slate-500">Topic: {grade.quiz.topic}</div>
+                              <div className="text-xs text-slate-500">Topic: {grade.quiz.topic} | Difficulty: {grade.quiz.difficulty}</div>
                             </td>
                             <td className={`px-6 py-4 whitespace-nowrap text-center text-sm ${getGradeColor((grade.score / grade.totalQuestions) * 100)}`}>
                               {grade.score} / {grade.totalQuestions}
