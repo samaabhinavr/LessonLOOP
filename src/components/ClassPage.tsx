@@ -157,6 +157,28 @@ export default function ClassPage() {
     }
   }, [id, isTeacher]);
 
+  const handleExportData = async () => {
+    if (!id) return;
+    try {
+      const res = await axios.get(`http://localhost:5000/api/classes/${id}/export-data`, {
+        responseType: 'blob', // Important for downloading files
+      });
+
+      const blob = new Blob([res.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${classData?.name.replace(/\s/g, '_') || 'class'}_report.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error exporting class data:', err);
+      alert('Failed to export data. Please try again.');
+    }
+  };
+
   const fetchMaterials = useCallback(async () => {
     if (id) {
       try {
