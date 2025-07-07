@@ -2,6 +2,11 @@
 const mongoose = require('mongoose');
 
 const UserSchema = new mongoose.Schema({
+  firebaseUid: {
+    type: String,
+    required: true,
+    unique: true,
+  },
   name: {
     type: String,
     required: true,
@@ -13,7 +18,7 @@ const UserSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
+    required: false, // Password is now handled by Firebase Auth, but kept for existing users/data integrity
   },
   role: {
     type: String,

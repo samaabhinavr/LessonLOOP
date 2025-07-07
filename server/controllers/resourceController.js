@@ -17,8 +17,8 @@ exports.uploadResource = async (req, res) => {
       return res.status(404).json({ msg: 'Class not found' });
     }
 
-    const isTeacher = classItem.teacher.toString() === req.user.id;
-    const isStudent = classItem.students.some(student => student._id.toString() === req.user.id);
+    const isTeacher = classItem.teacher.toString() === req.user.dbUser._id.toString();
+    const isStudent = classItem.students.some(student => student._id.toString() === req.user.dbUser._id.toString());
 
     if (!isTeacher && !isStudent) {
       return res.status(403).json({ msg: 'Not authorized to upload to this class' });
@@ -30,7 +30,7 @@ exports.uploadResource = async (req, res) => {
       fileType: file.mimetype,
       fileSize: file.size,
       class: classId,
-      uploadedBy: req.user.id,
+      uploadedBy: req.user.dbUser._id,
     });
 
     const savedResource = await newResource.save();
@@ -52,8 +52,8 @@ exports.getResourcesByClass = async (req, res) => {
       return res.status(404).json({ msg: 'Class not found' });
     }
 
-    const isTeacher = classItem.teacher.toString() === req.user.id;
-    const isStudent = classItem.students.some(student => student._id.toString() === req.user.id);
+    const isTeacher = classItem.teacher.toString() === req.user.dbUser._id.toString();
+    const isStudent = classItem.students.some(student => student._id.toString() === req.user.dbUser._id.toString());
 
     if (!isTeacher && !isStudent) {
       return res.status(403).json({ msg: 'Not authorized to view resources for this class' });

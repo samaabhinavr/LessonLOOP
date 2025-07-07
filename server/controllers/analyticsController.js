@@ -4,8 +4,8 @@ const Quiz = require('../models/Quiz');
 exports.getAnalytics = async (req, res) => {
   try {
     const { classId } = req.params;
-    const userId = req.user.id;
-    const userRole = req.user.role;
+    const userId = req.user.dbUser._id;
+    const userRole = req.user.dbUser.role;
 
     let results;
     if (userRole === 'Teacher') {

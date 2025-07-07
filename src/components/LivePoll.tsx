@@ -35,14 +35,11 @@ const LivePoll = () => {
 
       const fetchActivePoll = async () => {
         try {
-          const token = localStorage.getItem('token');
-          const res = await axios.get(`http://localhost:5000/api/polls/active/${classId}`, {
-            headers: { 'x-auth-token': token },
-          });
+          const res = await axios.get(`http://localhost:5000/api/polls/active/${classId}`);
           if (res.data) {
             setActivePoll(res.data);
             // Check if the current user has already voted on this poll
-            if (user && res.data.votedUsers.includes(user.id)) {
+            if (user && user.dbUser && res.data.votedUsers.includes(user.dbUser._id)) {
               setVoted(true);
             } else {
               setVoted(false);
@@ -64,7 +61,7 @@ const LivePoll = () => {
 
   // Reset voted state when activePoll changes (e.g., new poll created)
   useEffect(() => {
-    if (activePoll && user && activePoll.votedUsers.includes(user.id)) {
+    if (activePoll && user && user.dbUser && activePoll.votedUsers.includes(user.dbUser._id)) {
       setVoted(true);
     } else {
       setVoted(false);
@@ -72,21 +69,23 @@ const LivePoll = () => {
   }, [activePoll, user]);
 
   const handleCreatePoll = () => {
-    if (question && options.every(o => o) && correctAnswer !== null && socket) {
+    if (question && options.every(o => o) && correctAnswer !== null && socket && user?.dbUser?._id) {
       socket.emit('createPoll', {
         classId,
         question,
         options,
         correctAnswer,
-        userId: user.id,
+        userId: user.dbUser._id,
       });
+    } else {
+      console.error('Cannot create poll: Missing question, options, correct answer, socket, or user ID.');
     }
   };
 
   const handleVote = (optionIndex) => {
     if (!voted && activePoll && socket) {
       setSelectedOption(optionIndex);
-      const currentUserId = user ? user.id : null; // Safely get userId, will be null if not logged in
+      const currentUserId = user && user.dbUser ? user.dbUser._id : null; // Safely get userId, will be null if not logged in
       socket.emit('vote', { pollId: activePoll._id, optionIndex, userId: currentUserId });
       setVoted(true);
     }

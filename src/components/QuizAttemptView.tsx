@@ -42,7 +42,10 @@ export default function QuizAttemptView() {
         setQuiz(quizRes.data);
       } catch (err) {
         console.error('Error fetching quiz:', err);
-        navigate(-1);
+        // Set an error state to display to the user
+        setQuiz(null); // Ensure quiz is null to trigger loading/error state
+        setQuizResult(null); // Ensure quizResult is null
+        // Do not navigate here, let the component render the error message
       }
     };
 
@@ -52,7 +55,10 @@ export default function QuizAttemptView() {
         setQuizResult(resultRes.data);
       } catch (err) {
         console.error('Error fetching quiz result:', err);
-        navigate(-1);
+        // Set an error state to display to the user
+        setQuiz(null); // Ensure quiz is null to trigger loading/error state
+        setQuizResult(null); // Ensure quizResult is null
+        // Do not navigate here, let the component render the error message
       }
     };
 
@@ -60,18 +66,28 @@ export default function QuizAttemptView() {
       fetchQuizData();
       fetchQuizResult();
     }
-  }, [quizId, attemptId, navigate]);
+  }, [quizId, attemptId]); // Removed navigate from dependencies to prevent infinite loop
 
   const handleBack = () => {
     if (quiz && quiz.class) {
       navigate(`/class/${quiz.class}`);
     } else {
-      navigate(-1); // Fallback if class ID is not available
+      navigate('/dashboard'); // Fallback to dashboard if class ID is not available
     }
   };
 
   if (!quiz || !quizResult) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
+        <p className="text-lg text-red-600 mb-4">Failed to load quiz attempt details. Please try again.</p>
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+        >
+          Go to Dashboard
+        </button>
+      </div>
+    );
   }
 
   return (

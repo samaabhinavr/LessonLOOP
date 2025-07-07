@@ -192,6 +192,8 @@ export default function ClassPage() {
   }, [id]);
 
   useEffect(() => {
+    if (!user) return; // Only fetch data if user is authenticated
+
     fetchClassData();
     fetchQuizzes();
     if (activeTab === 'materials') {
@@ -203,7 +205,7 @@ export default function ClassPage() {
     if (activeTab === 'my-grades') {
       fetchMyGrades();
     }
-  }, [id, activeTab, fetchClassData, fetchQuizzes, fetchGradebookData, fetchMyGrades, fetchMaterials, isTeacher]);
+  }, [id, activeTab, fetchClassData, fetchQuizzes, fetchGradebookData, fetchMyGrades, fetchMaterials, user, isTeacher]);
 
   const handleBackToDashboard = () => {
     navigate('/dashboard');
@@ -235,7 +237,6 @@ export default function ClassPage() {
       const res = await axios.post(`http://localhost:5000/api/resources/upload/${id}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
-          'x-auth-token': localStorage.getItem('token'),
         },
       });
       setMaterials([...materials, res.data]);

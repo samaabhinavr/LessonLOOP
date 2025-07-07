@@ -6,6 +6,7 @@ const Notification = require('../models/Notification');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+console.log('Gemini API Key loaded:', process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.substring(0, 5) + '...' : 'Not set');
 
 
 // @desc    Create a new quiz
@@ -15,13 +16,13 @@ exports.createQuiz = async (req, res) => {
   const { classId, title, questions, dueDate, dueTime, topic, difficulty } = req.body;
 
   // Check if user is a teacher
-  if (req.user.role !== 'Teacher') {
+  if (req.user.dbUser.role !== 'Teacher') {
     return res.status(403).json({ msg: 'Only teachers can create quizzes' });
   }
 
   try {
     // Verify the class exists and the teacher owns it
-    const existingClass = await Class.findOne({ _id: classId, teacher: req.user.id });
+    const existingClass = await Class.findOne({ _id: classId, teacher: req.user.dbUser._id });
     if (!existingClass) {
       return res.status(404).json({ msg: 'Class not found or you do not have permission to create quizzes for this class' });
     }
@@ -45,7 +46,7 @@ exports.createQuiz = async (req, res) => {
       topic,
       difficulty,
       questions,
-      createdBy: req.user.id,
+      createdBy: req.user.dbUser._id,
       dueDate: dueDateTime,
     });
 
@@ -100,7 +101,7 @@ exports.getQuizById = async (req, res) => {
     // Ensure user has access to the quiz's class
     const userClass = await Class.findOne({
       _id: quiz.class,
-      $or: [{ teacher: req.user.id }, { students: req.user.id }],
+      $or: [{ teacher: req.user.dbUser._id }, { students: req.user.dbUser._id }],
     });
 
     if (!userClass) {
@@ -121,7 +122,7 @@ exports.updateQuiz = async (req, res) => {
   const { title, questions, dueDate, dueTime, status } = req.body;
 
   // Check if user is a teacher
-  if (req.user.role !== 'Teacher') {
+  if (req.user.dbUser.role !== 'Teacher') {
     return res.status(403).json({ msg: 'Only teachers can update quizzes' });
   }
 
@@ -133,7 +134,7 @@ exports.updateQuiz = async (req, res) => {
     }
 
     // Ensure teacher created this quiz
-    if (quiz.createdBy.toString() !== req.user.id) {
+    if (quiz.createdBy.toString() !== req.user.dbUser._id.toString()) {
       return res.status(403).json({ msg: 'Not authorized to update this quiz' });
     }
 
@@ -166,7 +167,7 @@ exports.updateQuiz = async (req, res) => {
 // @access  Private (Teacher)
 exports.deleteQuiz = async (req, res) => {
   // Check if user is a teacher
-  if (req.user.role !== 'Teacher') {
+  if (req.user.dbUser.role !== 'Teacher') {
     return res.status(403).json({ msg: 'Only teachers can delete quizzes' });
   }
 
@@ -178,7 +179,7 @@ exports.deleteQuiz = async (req, res) => {
     }
 
     // Ensure teacher created this quiz
-    if (quiz.createdBy.toString() !== req.user.id) {
+    if (quiz.createdBy.toString() !== req.user.dbUser._id.toString()) {
       return res.status(403).json({ msg: 'Not authorized to delete this quiz' });
     }
 
@@ -195,7 +196,7 @@ exports.deleteQuiz = async (req, res) => {
 // @access  Private (Teacher)
 exports.publishQuiz = async (req, res) => {
   // Check if user is a teacher
-  if (req.user.role !== 'Teacher') {
+  if (req.user.dbUser.role !== 'Teacher') {
     return res.status(403).json({ msg: 'Only teachers can publish quizzes' });
   }
 
@@ -207,7 +208,7 @@ exports.publishQuiz = async (req, res) => {
     }
 
     // Ensure teacher created this quiz
-    if (quiz.createdBy.toString() !== req.user.id) {
+    if (quiz.createdBy.toString() !== req.user.dbUser._id.toString()) {
       return res.status(403).json({ msg: 'Not authorized to publish this quiz' });
     }
 
@@ -227,7 +228,7 @@ exports.submitQuiz = async (req, res) => {
   const { answers } = req.body;
 
   // Check if user is a student
-  if (req.user.role !== 'Student') {
+  if (req.user.dbUser.role !== 'Student') {
     return res.status(403).json({ msg: 'Only students can submit quizzes' });
   }
 
@@ -243,7 +244,7 @@ exports.submitQuiz = async (req, res) => {
     }
 
     // Check if student has already submitted this quiz
-    const existingResult = await QuizResult.findOne({ quiz: quiz._id, student: req.user.id });
+    const existingResult = await QuizResult.findOne({ quiz: quiz._id, student: req.user.dbUser._id });
     if (existingResult) {
       return res.status(400).json({ msg: 'You have already submitted this quiz' });
     }
@@ -268,7 +269,7 @@ exports.submitQuiz = async (req, res) => {
     // Save the quiz result
     const quizResult = new QuizResult({
       quiz: quiz._id,
-      student: req.user.id,
+      student: req.user.dbUser._id,
       answers: studentAnswers,
       score: score,
       totalQuestions: quiz.questions.length,
@@ -288,7 +289,7 @@ exports.submitQuiz = async (req, res) => {
 // @route   GET /api/quizzes/results/:quizId
 // @access  Private (Teacher)
 exports.getQuizResultsForQuiz = async (req, res) => {
-  if (req.user.role !== 'Teacher') {
+  if (req.user.dbUser.role !== 'Teacher') {
     return res.status(403).json({ msg: 'Only teachers can view all quiz results' });
   }
 
@@ -305,12 +306,12 @@ exports.getQuizResultsForQuiz = async (req, res) => {
 // @route   GET /api/quizzes/result/:quizId
 // @access  Private (Student)
 exports.getQuizResultForStudent = async (req, res) => {
-  if (req.user.role !== 'Student') {
+  if (req.user.dbUser.role !== 'Student') {
     return res.status(403).json({ msg: 'Only students can view their own quiz results' });
   }
 
   try {
-    const quizResult = await QuizResult.findOne({ quiz: req.params.quizId, student: req.user.id });
+    const quizResult = await QuizResult.findOne({ quiz: req.params.quizId, student: req.user.dbUser._id });
 
     if (!quizResult) {
       return res.status(404).json({ msg: 'Quiz result not found for this student' });
@@ -338,7 +339,7 @@ exports.getQuizAttemptById = async (req, res) => {
     const quiz = await Quiz.findById(quizResult.quiz);
     const userClass = await Class.findOne({
       _id: quiz.class,
-      $or: [{ teacher: req.user.id }, { students: req.user.id }],
+      $or: [{ teacher: req.user.dbUser._id }, { students: req.user.dbUser._id }],
     });
 
     if (!userClass) {
@@ -359,18 +360,19 @@ exports.generateMCQ = async (req, res) => {
   console.log('Received request to generate MCQs with body:', req.body);
   const { topic, numQuestions, difficulty, gradeLevel } = req.body;
 
-  if (req.user.role !== 'Teacher') {
-    return res.status(403).json({ msg: 'Only teachers can generate quizzes' });
-  }
+  
 
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `You are an expert quiz creator. Generate ${numQuestions} multiple-choice questions about ${topic} for a ${gradeLevel} grade level from CBSE syllabus, with a difficulty of ${difficulty}. Each question must have exactly 4 options. Your response must be a valid, parsable JSON array of objects. Each object in the array must have the following properties and types: 'questionText' (string), 'options' (an array of exactly 4 objects, each with a 'text' property of type string), 'correctAnswer' (the 0-based index of the correct option, must be a number between 0 and 3), and 'explanation' (a brief explanation for why the correct answer is correct). Return ONLY the JSON array. Do not include any extra text, explanations, or formatting outside of the JSON array.`;
 
+    console.log('Gemini Prompt:', prompt);
+
     const result = await model.generateContent(prompt);
     const response = await result.response;
     let text = response.text();
+    console.log('Raw Gemini Response:', text);
 
     // Attempt to clean the response by removing markdown code block formatting
     if (text.startsWith('```json') && text.endsWith('```')) {
@@ -419,12 +421,12 @@ exports.generateMCQ = async (req, res) => {
 // @route   GET /api/quizzes/my-results/:classId
 // @access  Private (Student)
 exports.getStudentQuizResultsInClass = async (req, res) => {
-  if (req.user.role !== 'Student') {
+  if (req.user.dbUser.role !== 'Student') {
     return res.status(403).json({ msg: 'Only students can view their own quiz results' });
   }
 
   try {
-    const quizResults = await QuizResult.find({ student: req.user.id }).select('+isLate').populate({
+    const quizResults = await QuizResult.find({ student: req.user.dbUser._id }).select('+isLate').populate({
       path: 'quiz',
       match: { class: req.params.classId },
       select: 'title questions topic difficulty dueDate', // Select necessary quiz fields including dueDate

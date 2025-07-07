@@ -18,8 +18,14 @@ module.exports = function(server) {
     });
 
     socket.on('createPoll', async (data) => {
-      const poll = await createPoll(data);
-      io.to(data.classId).emit('pollCreated', poll);
+      try {
+        const poll = await createPoll(data);
+        io.to(data.classId).emit('pollCreated', poll);
+      } catch (error) {
+        console.error('Error creating poll via socket:', error);
+        // Optionally, emit an error back to the client
+        socket.emit('pollError', { message: 'Failed to create poll.' });
+      }
     });
 
     socket.on('vote', async (data) => {

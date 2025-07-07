@@ -6,7 +6,7 @@ const QuizResult = require('../models/QuizResult');
 // @access  Private (Student)
 exports.getAverageGrade = async (req, res) => {
   try {
-    const studentId = req.user.id;
+    const studentId = req.user.dbUser._id;
 
     const results = await QuizResult.find({ student: studentId });
 

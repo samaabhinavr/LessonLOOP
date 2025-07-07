@@ -7,7 +7,7 @@ const { nanoid } = require('nanoid');
 // @desc    Create a class
 exports.createClass = async (req, res) => {
   // Only teachers can create classes
-  if (req.user.role !== 'Teacher') {
+  if (req.user.dbUser.role !== 'Teacher') {
     return res.status(403).json({ msg: 'Only teachers can create classes' });
   }
 
@@ -16,7 +16,7 @@ exports.createClass = async (req, res) => {
   try {
     const newClass = new Class({
       name,
-      teacher: req.user.id,
+      teacher: req.user.dbUser._id,
       inviteCode: nanoid(8), // Generate a unique 8-character code
     });
 
@@ -32,12 +32,12 @@ exports.createClass = async (req, res) => {
 exports.getClasses = async (req, res) => {
   try {
     let classes;
-    if (req.user.role === 'Teacher') {
+    if (req.user.dbUser.role === 'Teacher') {
       // Find classes where the user is the teacher
-      classes = await Class.find({ teacher: req.user.id }).populate('students', 'name email');
+      classes = await Class.find({ teacher: req.user.dbUser._id }).populate('students', 'name email');
     } else {
       // Find classes where the user is a student
-      classes = await Class.find({ students: req.user.id }).populate('teacher', 'name email');
+      classes = await Class.find({ students: req.user.dbUser._id }).populate('teacher', 'name email');
     }
     res.json(classes);
   } catch (err) {
@@ -51,9 +51,19 @@ exports.getClassById = async (req, res) => {
   try {
     console.log("Backend: getClassById - Received ID:", req.params.id);
     console.log("Backend: getClassById - Attempting to find class and populate...");
+    console.log("Backend: getClassById - Before findById and populate");
     const classItem = await Class.findById(req.params.id)
       .populate('teacher', 'name email')
       .populate('students', 'name email');
+    console.log("Backend: getClassById - After findById and populate. classItem exists:", !!classItem);
+    if (classItem) {
+      console.log("Backend: getClassById - Full classItem object (after populate):");
+      console.log(JSON.stringify(classItem, null, 2));
+      console.log("Backend: getClassById - classItem.teacher (after populate):");
+      console.log(classItem.teacher);
+    }
+    console.log("Backend: getClassById - Full req.user object:");
+    console.log(JSON.stringify(req.user, null, 2));
     console.log("Backend: getClassById - Class found (or not):", classItem ? classItem._id : 'null');
 
     if (!classItem) {
@@ -61,13 +71,23 @@ exports.getClassById = async (req, res) => {
       return res.status(404).json({ msg: 'Class not found' });
     }
 
+    // CRITICAL: Ensure classItem.teacher is populated and valid
+    if (!classItem.teacher || !classItem.teacher._id) {
+      console.error('Data Integrity Error: Class', classItem._id, 'has an invalid or unpopulated teacher field.');
+      // Attempt to find the user by firebaseUid if teacher is missing, to provide more context
+      const userByFirebaseUid = await User.findOne({ firebaseUid: req.user.uid });
+      console.error('Current authenticated user (from Firebase UID):', userByFirebaseUid ? userByFirebaseUid._id : 'Not found');
+      return res.status(500).json({ msg: 'Server error: Class data is incomplete or corrupted (teacher not found).' });
+    }
+
     // Check if the user is either the teacher or a student in the class
-    const isTeacher = classItem.teacher._id.toString() === req.user.id;
-    const isStudent = classItem.students.some(student => student._id.toString() === req.user.id);
+    const isTeacher = classItem.teacher._id.toString() === req.user.dbUser._id.toString();
+    const isStudent = classItem.students.some(student => student._id.toString() === req.user.dbUser._id.toString());
+
     console.log('isTeacher:', isTeacher, 'isStudent:', isStudent);
 
     if (!isTeacher && !isStudent) {
-      console.log('User not authorized for this class:', req.user.id);
+      console.log('User not authorized for this class:', req.user.dbUser._id);
       return res.status(403).json({ msg: 'Not authorized to access this class' });
     }
     console.log("Backend: getClassById - Sending response...");
@@ -80,8 +100,12 @@ exports.getClassById = async (req, res) => {
 
 // @desc    Join a class
 exports.joinClass = async (req, res) => {
+  console.log('Backend: joinClass - Received request to join class.');
+  console.log('Backend: joinClass - req.body:', req.body);
+  console.log('Backend: joinClass - req.user.dbUser:', req.user.dbUser);
+
   // Only students can join classes
-  if (req.user.role !== 'Student') {
+  if (req.user.dbUser.role !== 'Student') {
     return res.status(403).json({ msg: 'Only students can join classes' });
   }
 
@@ -94,8 +118,8 @@ exports.joinClass = async (req, res) => {
     }
 
     // Add student to class if not already enrolled
-    if (!course.students.includes(req.user.id)) {
-      course.students.push(req.user.id);
+    if (!course.students.includes(req.user.dbUser._id)) {
+      course.students.push(req.user.dbUser._id);
       await course.save();
     }
 
@@ -121,8 +145,8 @@ exports.getGradebook = async (req, res) => {
       return res.status(404).json({ msg: 'Class not found' });
     }
 
-    const isTeacher = classItem.teacher.toString() === req.user.id;
-    const isStudent = classItem.students.some(student => student._id.toString() === req.user.id);
+    const isTeacher = classItem.teacher.toString() === req.user.dbUser._id.toString();
+    const isStudent = classItem.students.some(student => student._id.toString() === req.user.dbUser._id.toString());
     console.log('isTeacher:', isTeacher, 'isStudent:', isStudent);
 
     if (!isTeacher && !isStudent) {
@@ -180,7 +204,7 @@ exports.getGradebook = async (req, res) => {
 exports.getMyGrades = async (req, res) => {
   try {
     const classId = req.params.id;
-    const studentId = req.user.id;
+    const studentId = req.user.dbUser._id;
 
     // Ensure the user is a student in this class
     const classItem = await Class.findOne({ _id: classId, students: studentId });
@@ -223,7 +247,7 @@ exports.exportClassData = async (req, res) => {
       return res.status(404).json({ msg: 'Class not found' });
     }
 
-    if (classItem.teacher._id.toString() !== req.user.id) {
+    if (classItem.teacher._id.toString() !== req.user.dbUser._id.toString()) {
       return res.status(403).json({ msg: 'Not authorized to export data for this class' });
     }
 

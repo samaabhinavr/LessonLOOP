@@ -7,6 +7,8 @@ import QuizAttempt from './components/QuizAttempt';
 import QuizResults from './components/QuizResults';
 import QuizAttemptView from './components/QuizAttemptView';
 import Analytics from './components/Analytics';
+import ForgotPassword from './components/ForgotPassword';
+import ResetPassword from './components/ResetPassword';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PollProvider } from './context/PollContext';
 
@@ -43,6 +45,8 @@ function AppRoutes() {
         path="/class/:classId/analytics" 
         element={isAuthenticated ? <Analytics /> : <Navigate to="/login" replace />} 
       />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password/:token" element={<ResetPassword />} />
       <Route path="/" element={<Navigate to="/login" replace />} />
     </Routes>
   );

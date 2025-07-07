@@ -3,6 +3,8 @@ const router = express.Router();
 const { getAnalytics } = require('../controllers/analyticsController');
 const auth = require('../middleware/auth');
 
-router.get('/:classId', auth, getAnalytics);
+const authorize = require('../middleware/authorize');
+
+router.get('/:classId', auth, authorize('Teacher', 'Student'), getAnalytics);
 
 module.exports = router;

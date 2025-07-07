@@ -23,7 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 .env
-
+server/serviceAccountKey.json
 # MongoDB data directory
 server/data/
 server/uploads/

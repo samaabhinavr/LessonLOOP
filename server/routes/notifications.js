@@ -8,7 +8,7 @@ const Notification = require('../models/Notification');
 // @access   Private
 router.get('/', auth, async (req, res) => {
   try {
-    const notifications = await Notification.find({ recipient: req.user.id }).sort({ createdAt: -1 });
+    const notifications = await Notification.find({ recipient: req.user.dbUser._id }).sort({ createdAt: -1 });
     res.json(notifications);
   } catch (err) {
     console.error(err.message);
@@ -28,7 +28,7 @@ router.put('/mark-read/:id', auth, async (req, res) => {
     }
 
     // Ensure user owns the notification
-    if (notification.recipient.toString() !== req.user.id) {
+    if (notification.recipient.toString() !== req.user.dbUser._id.toString()) {
       return res.status(401).json({ msg: 'User not authorized' });
     }
 
@@ -47,7 +47,7 @@ router.put('/mark-read/:id', auth, async (req, res) => {
 // @access   Private
 router.put('/mark-all-read', auth, async (req, res) => {
   try {
-    await Notification.updateMany({ recipient: req.user.id, read: false }, { $set: { read: true } });
+    await Notification.updateMany({ recipient: req.user.dbUser._id, read: false }, { $set: { read: true } });
     res.json({ msg: 'All notifications marked as read' });
   } catch (err) {
     console.error(err.message);
@@ -67,7 +67,7 @@ router.delete('/:id', auth, async (req, res) => {
     }
 
     // Ensure user owns the notification
-    if (notification.recipient.toString() !== req.user.id) {
+    if (notification.recipient.toString() !== req.user.dbUser._id.toString()) {
       return res.status(401).json({ msg: 'User not authorized' });
     }
 
@@ -84,7 +84,7 @@ router.delete('/:id', auth, async (req, res) => {
 // @access   Private
 router.delete('/read', auth, async (req, res) => {
   try {
-    await Notification.deleteMany({ recipient: req.user.id, read: true });
+    await Notification.deleteMany({ recipient: req.user.dbUser._id, read: true });
     res.json({ msg: 'All read notifications removed' });
   } catch (err) {
     console.error(err.message);

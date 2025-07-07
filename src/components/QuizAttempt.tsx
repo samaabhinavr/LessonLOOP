@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, CheckCircle } from 'lucide-react';
@@ -57,7 +57,7 @@ export default function QuizAttempt() {
       }
     };
     checkAndFetchQuiz();
-  }, [quizId, navigate, user]);
+  }, [quizId, navigate, user, useLocation().pathname]);
 
   const handleAnswerChange = (questionIndex: number, optionIndex: number) => {
     const newSelectedAnswers = [...selectedAnswers];

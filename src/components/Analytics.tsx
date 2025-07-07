@@ -70,17 +70,11 @@ const Analytics = () => {
     const fetchAnalytics = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem('token');
-        // Fetch class name for the header
-        const classRes = await axios.get(`http://localhost:5000/api/classes/${classId}`, {
-          headers: { 'x-auth-token': token },
-        });
+        const classRes = await axios.get(`http://localhost:5000/api/classes/${classId}`);
         setClassName(classRes.data.name);
 
         // Fetch analytics data
-        const analyticsRes = await axios.get(`http://localhost:5000/api/analytics/${classId}`, {
-          headers: { 'x-auth-token': token },
-        });
+        const analyticsRes = await axios.get(`http://localhost:5000/api/analytics/${classId}`);
         
         if (analyticsRes.data) {
           setAnalytics(analyticsRes.data);

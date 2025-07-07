@@ -1,6 +1,7 @@
 const Poll = require('../models/Poll');
 const Class = require('../models/Class');
 const Notification = require('../models/Notification');
+const User = require('../models/User');
 
 exports.createPoll = async (data) => {
   const { classId, question, options, correctAnswer, userId } = data;
@@ -34,14 +35,12 @@ exports.voteOnPoll = async (data) => {
   const poll = await Poll.findById(pollId);
   if (poll && poll.isActive) {
     // Prevent duplicate votes from the same user
-    if (userId && poll.votedUsers.includes(userId)) {
+    if (poll.votedUsers.includes(userId)) {
       return null; // User has already voted
     }
 
     poll.options[optionIndex].votes++;
-    if (userId) {
-      poll.votedUsers.push(userId);
-    }
+    poll.votedUsers.push(userId);
     await poll.save();
     return poll;
   }

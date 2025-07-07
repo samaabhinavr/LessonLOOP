@@ -1,36 +1,39 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import axios, { AxiosError } from 'axios';
-import { jwtDecode, JwtPayload } from 'jwt-decode';
+import { auth } from '../main'; // Import the Firebase auth instance
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  User as FirebaseUser,
+} from 'firebase/auth';
+import axios from 'axios'; // Re-add axios
 
-export type UserRole = 'Teacher' | 'Student'; // Match backend enum
+export type UserRole = 'Teacher' | 'Student';
 
 interface User {
-  id: string;
-  email: string;
-  role: UserRole;
-  name?: string;
-  profilePicture?: string;
-}
-
-interface DecodedToken extends JwtPayload {
-  user: {
-    id: string;
-    email: string;
+  uid: string; // Firebase User ID
+  email: string | null;
+  name?: string; // Add name from backend profile
+  role?: UserRole; // Role might still come from your backend/database
+  displayName?: string | null;
+  photoURL?: string | null;
+  profilePicture?: string; // Add profilePicture
+  dbUser?: { // Add dbUser object
+    _id: string; // MongoDB User ID
     role: UserRole;
-    name?: string;
-    profilePicture?: string;
+    // Add other relevant dbUser properties as needed
   };
+  // Add any other custom user properties you store in your backend
 }
 
 interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
-  login: (email: string, password: string, role: UserRole) => Promise<void>;
-  register: (name: string, email: string, password: string, role: UserRole) => Promise<void>;
-  loginWithGoogle: (role: UserRole) => Promise<void>; // Keep for future implementation
-  logout: () => void;
-  updateUser: (updatedUser: Partial<User>) => void;
-  setAuthToken: (token: string | null) => void;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, name: string, role: UserRole, teacherCode?: string) => Promise<void>; // Name and Role are now required for backend registration
+  logout: () => Promise<void>;
+  updateUser: (updatedUser: Partial<User>) => void; // This might need adjustment for Firebase user profile updates
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -40,129 +43,105 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const decoded = jwtDecode<DecodedToken>(token);
-        // Check if token is expired
-        if (decoded.exp && decoded.exp * 1000 < Date.now()) {
-          localStorage.removeItem('token');
-          setIsAuthenticated(false);
-          setUser(null);
-        } else {
-          setIsAuthenticated(true);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // User is signed in with Firebase
+        setIsAuthenticated(true);
+
+        // Get Firebase ID token and set it for Axios
+        const idToken = await firebaseUser.getIdToken();
+        axios.defaults.headers.common['x-auth-token'] = idToken;
+
+        // Fetch custom user data (like 'role') from your backend using the Firebase UID
+        try {
+          const res = await axios.get('http://localhost:5000/api/auth/profile');
+          const userData = res.data;
           setUser({
-            id: decoded.user.id,
-            email: decoded.user.email,
-            role: decoded.user.role,
-            name: decoded.user.name,
-            profilePicture: decoded.user.profilePicture,
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
+            name: userData.name, // Assign name from backend
+            role: userData.role, // Assuming role comes from your backend
+            profilePicture: userData.profilePicture, // Assign profilePicture from backend
+            dbUser: { _id: userData._id, role: userData.role }, // Include dbUser with _id and role
+            // ... other custom data from backend
           });
-          // Set auth token for axios
-          axios.defaults.headers.common['x-auth-token'] = token;
+        } catch (error) {
+          console.error('Failed to fetch user profile from backend:', error);
+          // If backend profile doesn't exist, set basic Firebase user data
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
+          });
         }
-      } catch (error) {
-        console.error('Failed to decode token:', error);
-        localStorage.removeItem('token');
+      } else {
+        // User is signed out
         setIsAuthenticated(false);
         setUser(null);
+        // Clear Axios default header
+        delete axios.defaults.headers.common['x-auth-token'];
       }
-    }
+    });
+
+    return () => unsubscribe(); // Cleanup subscription on unmount
   }, []);
 
-  const setAuthToken = (token: string | null) => {
-    if (token) {
-      localStorage.setItem('token', token);
-      axios.defaults.headers.common['x-auth-token'] = token;
-      try {
-        const decoded = jwtDecode<DecodedToken>(token);
-        setUser({
-          id: decoded.user.id,
-          email: decoded.user.email,
-          role: decoded.user.role,
-          name: decoded.user.name,
-          profilePicture: decoded.user.profilePicture,
-        });
-      } catch (error) {
-        console.error('Failed to decode token in setAuthToken:', error);
-        localStorage.removeItem('token');
-        setIsAuthenticated(false);
-        setUser(null);
-      }
-    } else {
-      localStorage.removeItem('token');
-      delete axios.defaults.headers.common['x-auth-token'];
-      setIsAuthenticated(false);
-      setUser(null);
-    }
-  };
-
-  const login = async (email: string, password: string, role: UserRole) => {
+  const login = async (email: string, password: string) => {
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/login', { email, password, role });
-      setAuthToken(res.data.token);
-      const decoded = jwtDecode<DecodedToken>(res.data.token);
-      setIsAuthenticated(true);
-      setUser({
-        id: decoded.user.id,
-        email: decoded.user.email,
-        role: decoded.user.role,
-        name: decoded.user.name,
-        profilePicture: decoded.user.profilePicture,
-      });
-    } catch (error) {
-      const axiosError = error as AxiosError;
-      console.error('Login failed:', axiosError.response?.data || axiosError.message);
+      await signInWithEmailAndPassword(auth, email, password);
+      // onAuthStateChanged will handle setting user state and fetching profile
+    } catch (error: any) {
+      console.error('Login failed:', error.message);
       throw error;
     }
   };
 
-  const register = async (name: string, email: string, password: string, role: UserRole) => {
+  const register = async (email: string, password: string, name: string, role: UserRole, teacherCode?: string) => {
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/register', { name, email, password, role });
-      setAuthToken(res.data.token);
-      const decoded = jwtDecode<DecodedToken>(res.data.token);
-      setIsAuthenticated(true);
-      setUser({
-        id: decoded.user.id,
-        email: decoded.user.email,
-        role: decoded.user.role,
-        name: decoded.user.name,
-        profilePicture: decoded.user.profilePicture,
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+
+      // Send additional user data to your backend to store in MongoDB
+      await axios.post('http://localhost:5000/api/auth/register-profile', {
+        uid: firebaseUser.uid,
+        name,
+        email: firebaseUser.email,
+        role,
+        teacherCode,
       });
-    } catch (error) {
-      const axiosError = error as AxiosError;
-      console.error('Registration failed:', axiosError.response?.data || axiosError.message);
+
+      // onAuthStateChanged will handle setting user state and fetching profile
+    } catch (error: any) {
+      console.error('Registration failed:', error.message);
       throw error;
     }
   };
 
-  const loginWithGoogle = async (role: UserRole) => {
-    // This will require backend integration for Google OAuth
-    console.warn('Google login not yet implemented with backend.');
-    // For now, keep the simulation or remove if not needed immediately
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsAuthenticated(true);
-    setUser({
-      id: 'google-user-id', // Placeholder
-      name: role === 'Teacher' ? 'Dr. Sarah Johnson (Google)' : 'Alex Thompson (Google)',
-      email: 'google_user@example.com',
-      role
-    });
-  };
-
-  const logout = () => {
-    setAuthToken(null);
-    setIsAuthenticated(false);
-    setUser(null);
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      // onAuthStateChanged will handle setting user state
+    } catch (error: any) {
+      console.error('Logout failed:', error.message);
+      throw error;
+    }
   };
 
   const updateUser = (updatedUser: Partial<User>) => {
+    // This function will need to be adapted.
+    // For Firebase Auth profile updates (displayName, photoURL):
+    // if (auth.currentUser) {
+    //   auth.currentUser.updateProfile({ displayName: updatedUser.displayName, photoURL: updatedUser.photoURL });
+    // }
+    // For custom user data (like 'role'), you'd update your backend database.
     setUser(prevUser => prevUser ? { ...prevUser, ...updatedUser } : null);
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, register, loginWithGoogle, logout, updateUser }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

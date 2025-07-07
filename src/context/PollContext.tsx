@@ -49,17 +49,14 @@ export const PollProvider: React.FC<PollProviderProps> = ({ children }) => {
     });
 
     newSocket.on('pollCreated', (poll: Poll) => {
-      console.log('Poll created event received:', poll);
       setActivePoll(poll);
     });
 
     newSocket.on('pollUpdated', (poll: Poll) => {
-      console.log('Poll updated event received:', poll);
       setActivePoll(poll);
     });
 
     newSocket.on('pollEnded', (poll: Poll) => {
-      console.log('Poll ended event received:', poll);
       setActivePoll(poll);
     });
 

@@ -1,5 +1,14 @@
 
 require('dotenv').config();
+const admin = require('firebase-admin');
+const serviceAccount = require('./serviceAccountKey.json');
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  // You might need to set a databaseURL if you use Firebase Realtime Database or Firestore
+  // databaseURL: "https://<YOUR_PROJECT_ID>.firebaseio.com"
+});
+
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -54,7 +63,7 @@ app.get('/', (req, res) => {
 });
 
 // Connect to MongoDB and start server
-mongoose.connect("mongodb://127.0.0.1:27017/lessonloop")
+mongoose.connect(process.env.MONGO_URI, { dbName: 'LessonLoopCluster' })
   .then(() => {
     console.log('MongoDB connected successfully');
     console.log('JWT_SECRET loaded:', process.env.JWT_SECRET ? 'Yes' : 'No');
