@@ -8,9 +8,36 @@
     ],
     "rewrites": [
       {
+        "source": "/api/**",
+        "function": "api"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
+    ],
+    "headers": [
+      {
+        "source": "/api/**",
+        "headers": [
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "https://lessonloop-633d9.web.app"
+          },
+          {
+            "key": "Access-Control-Allow-Methods",
+            "value": "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS"
+          },
+          {
+            "key": "Access-Control-Allow-Headers",
+            "value": "Content-Type, Authorization, x-auth-token"
+          }
+        ]
+      }
     ]
+  },
+  "functions": {
+    "source": "server",
+    "runtime": "nodejs20"
   }
 }

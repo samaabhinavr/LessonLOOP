@@ -26,38 +26,52 @@ export default function QuizAttempt() {
   const [selectedAnswers, setSelectedAnswers] = useState<number[]>([]);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [score, setScore] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true); // New loading state
+  const [error, setError] = useState<string | null>(null); // New error state
+  const [isSubmitting, setIsSubmitting] = useState(false); // New submitting state
 
   useEffect(() => {
     const checkAndFetchQuiz = async () => {
-      if (!quizId || !user) return;
-
-      // First, check if the student has already submitted this quiz
-      if (user.role === 'Student') {
-        try {
-          const existingResultRes = await axios.get(`http://localhost:5000/api/quizzes/result/${quizId}`);
-          // If a result exists, redirect to the attempt view
-          if (existingResultRes.data && existingResultRes.data._id) {
-            navigate(`/quiz/${quizId}/attempt/${existingResultRes.data._id}`);
-            return;
-          }
-        } catch (err) {
-          // If no result found (404) or other error, proceed to fetch quiz
-          console.log('No existing quiz result found or error fetching, proceeding to quiz attempt.', err);
-        }
+      if (!quizId || !user) {
+        setIsLoading(false);
+        return;
       }
+      setIsLoading(true);
+      setError(null);
 
-      // If no existing result (or user is teacher), fetch the quiz
       try {
-        const res = await axios.get(`http://localhost:5000/api/quizzes/quiz/${quizId}`);
+        // First, check if the student has already submitted this quiz
+        if (user.role === 'Student') {
+          try {
+            const existingResultRes = await axios.get(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/quizzes/result/${quizId}`);
+            // If a result exists, redirect to the attempt view
+            if (existingResultRes.data && existingResultRes.data.id) {
+              navigate(`/quiz/${quizId}/attempt/${existingResultRes.data.id}`);
+              return;
+            }
+          } catch (err: any) {
+            // If no result found (404) or other error, proceed to fetch quiz
+            console.log('No existing quiz result found or error fetching, proceeding to quiz attempt.', err);
+            if (axios.isAxiosError(err) && err.response?.status !== 404) {
+              setError('Failed to check for existing quiz result.');
+            }
+          }
+        }
+
+        // If no existing result (or user is teacher), fetch the quiz
+        const res = await axios.get(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/quizzes/quiz/${quizId}`);
         setQuiz(res.data);
         setSelectedAnswers(new Array(res.data.questions.length).fill(-1)); // Initialize with -1 (no answer selected)
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error fetching quiz:', err);
-        navigate('/dashboard'); // Redirect if quiz not found or accessible
+        setError(err.response?.data?.message || 'Failed to load quiz. Please try again.');
+        // navigate('/dashboard'); // Redirect if quiz not found or accessible - removed for error display
+      } finally {
+        setIsLoading(false);
       }
     };
     checkAndFetchQuiz();
-  }, [quizId, navigate, user, useLocation().pathname]);
+  }, [quizId, navigate, user]);
 
   const handleAnswerChange = (questionIndex: number, optionIndex: number) => {
     const newSelectedAnswers = [...selectedAnswers];
@@ -69,20 +83,42 @@ export default function QuizAttempt() {
     e.preventDefault();
     if (!quizId || !user) return;
 
+    setIsSubmitting(true);
     try {
-      const res = await axios.post(`http://localhost:5000/api/quizzes/submit/${quizId}`, {
+      const res = await axios.post(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/quizzes/submit/${quizId}`, {
         answers: selectedAnswers,
       });
       setScore(res.data.score);
       setIsSubmitted(true);
       navigate(`/quiz/${quizId}/attempt/${res.data.quizResultId}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error submitting quiz:', err);
+      setError(err.response?.data?.message || 'Failed to submit quiz. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
+  if (isLoading) {
+    return <div className="min-h-screen flex items-center justify-center text-lg text-slate-600">Loading quiz...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-red-50">
+        <p className="text-lg text-red-800 mb-4">Error: {error}</p>
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+        >
+          Go to Dashboard
+        </button>
+      </div>
+    );
+  }
+
   if (!quiz) {
-    return <div className="min-h-screen flex items-center justify-center">Loading quiz...</div>;
+    return <div className="min-h-screen flex items-center justify-center text-lg text-slate-600">Quiz not found.</div>;
   }
 
   if (user?.role === 'Teacher') {
@@ -163,8 +199,9 @@ export default function QuizAttempt() {
               <button
                 type="submit"
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+                disabled={isSubmitting}
               >
-                Submit Quiz
+                {isSubmitting ? 'Submitting...' : 'Submit Quiz'}
               </button>
             </form>
           )}

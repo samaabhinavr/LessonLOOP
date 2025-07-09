@@ -1,14 +1,14 @@
 
-const QuizResult = require('../models/QuizResult');
+const QuizResult = require('../firestore/models/QuizResult');
 
 // @desc    Get average grade for a student
 // @route   GET /api/student/average-grade
 // @access  Private (Student)
 exports.getAverageGrade = async (req, res) => {
   try {
-    const studentId = req.user.dbUser._id;
+    const studentId = req.user.dbUser.id;
 
-    const results = await QuizResult.find({ student: studentId });
+    const results = await QuizResult.getResultsForStudent(studentId);
 
     if (results.length === 0) {
       return res.json({ averageGrade: 0 });
@@ -20,6 +20,6 @@ exports.getAverageGrade = async (req, res) => {
     res.json({ averageGrade });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send('Server error');
+    res.status(500).json({ msg: 'Server error: Failed to fetch average grade.' });
   }
 };

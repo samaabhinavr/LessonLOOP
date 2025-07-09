@@ -21,9 +21,6 @@ router.get('/profile', auth, authController.getUserProfile);
 // @access  Private
 router.post('/upload-profile-picture', auth, upload.single('profilePicture'), authController.uploadProfilePicture);
 
-// @route   POST api/auth/change-password
-// @desc    Change user password (handled by Firebase on frontend)
-// @access  Private (though this endpoint will now return an error)
-router.post('/change-password', auth, authController.changePassword);
+
 
 module.exports = router;

@@ -9,45 +9,58 @@ import QuizAttemptView from './components/QuizAttemptView';
 import Analytics from './components/Analytics';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
+import ProfileCompletion from './components/ProfileCompletion'; // Import ProfileCompletion
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PollProvider } from './context/PollContext';
 
 function AppRoutes() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isProfileComplete, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="w-16 h-16 border-4 border-blue-500 border-dashed rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <Routes>
       <Route 
         path="/login" 
-        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
+        element={isAuthenticated && isProfileComplete ? <Navigate to="/dashboard" replace /> : <Login />} 
+      />
+      <Route 
+        path="/complete-profile" 
+        element={isAuthenticated && !isProfileComplete ? <ProfileCompletion /> : <Navigate to="/login" replace />} 
       />
       <Route 
         path="/dashboard" 
-        element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" replace />} 
+        element={isAuthenticated && isProfileComplete ? <Dashboard /> : <Navigate to="/login" replace />} 
       />
       <Route 
         path="/class/:id" 
-        element={isAuthenticated ? <ClassPage /> : <Navigate to="/login" replace />} 
+        element={isAuthenticated && isProfileComplete ? <ClassPage /> : <Navigate to="/login" replace />} 
       />
       <Route 
         path="/quiz/:quizId" 
-        element={isAuthenticated ? <QuizAttempt /> : <Navigate to="/login" replace />} 
+        element={isAuthenticated && isProfileComplete ? <QuizAttempt /> : <Navigate to="/login" replace />} 
       />
       <Route 
         path="/quiz/:quizId/results" 
-        element={isAuthenticated ? <QuizResults /> : <Navigate to="/login" replace />} 
+        element={isAuthenticated && isProfileComplete ? <QuizResults /> : <Navigate to="/login" replace />} 
       />
       <Route 
         path="/quiz/:quizId/attempt/:attemptId" 
-        element={isAuthenticated ? <QuizAttemptView /> : <Navigate to="/login" replace />} 
+        element={isAuthenticated && isProfileComplete ? <QuizAttemptView /> : <Navigate to="/login" replace />} 
       />
       <Route 
         path="/class/:classId/analytics" 
-        element={isAuthenticated ? <Analytics /> : <Navigate to="/login" replace />} 
+        element={isAuthenticated && isProfileComplete ? <Analytics /> : <Navigate to="/login" replace />} 
       />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password/:token" element={<ResetPassword />} />
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/" element={isAuthenticated && isProfileComplete ? <Navigate to='/dashboard' replace /> : (isAuthenticated && !isProfileComplete ? <Navigate to="/complete-profile" replace /> : <Navigate to='/login' replace />)} />
     </Routes>
   );
 }

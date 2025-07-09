@@ -1,8 +1,7 @@
-const Class = require('../models/Class');
-const User = require('../models/User');
-const Quiz = require('../models/Quiz');
-const QuizResult = require('../models/QuizResult');
-const { nanoid } = require('nanoid');
+const Class = require('../firestore/models/Class');
+const User = require('../firestore/models/User');
+const Quiz = require('../firestore/models/Quiz');
+const QuizResult = require('../firestore/models/QuizResult');
 
 // @desc    Create a class
 exports.createClass = async (req, res) => {
@@ -14,16 +13,16 @@ exports.createClass = async (req, res) => {
   const { name } = req.body;
 
   try {
-    const newClass = new Class({
+    const newClass = {
       name,
-      teacher: req.user.dbUser._id,
-      inviteCode: nanoid(8), // Generate a unique 8-character code
-    });
+      teacher: req.user.dbUser.id,
+      students: [],
+    };
 
-    const savedClass = await newClass.save();
+    const savedClass = await Class.create(newClass);
     res.json(savedClass);
   } catch (err) {
-    console.error(err.message);
+    console.error('Error in createClass:', err);
     res.status(500).send('Server error');
   }
 };
@@ -34,14 +33,14 @@ exports.getClasses = async (req, res) => {
     let classes;
     if (req.user.dbUser.role === 'Teacher') {
       // Find classes where the user is the teacher
-      classes = await Class.find({ teacher: req.user.dbUser._id }).populate('students', 'name email');
+      classes = await Class.getClassesForTeacher(req.user.dbUser.id);
     } else {
       // Find classes where the user is a student
-      classes = await Class.find({ students: req.user.dbUser._id }).populate('teacher', 'name email');
+      classes = await Class.getClassesForStudent(req.user.dbUser.id);
     }
     res.json(classes);
   } catch (err) {
-    console.error(err.message);
+    console.error('Error in getClasses:', err);
     res.status(500).send('Server error');
   }
 };
@@ -49,48 +48,20 @@ exports.getClasses = async (req, res) => {
 // @desc    Get a single class by ID
 exports.getClassById = async (req, res) => {
   try {
-    console.log("Backend: getClassById - Received ID:", req.params.id);
-    console.log("Backend: getClassById - Attempting to find class and populate...");
-    console.log("Backend: getClassById - Before findById and populate");
-    const classItem = await Class.findById(req.params.id)
-      .populate('teacher', 'name email')
-      .populate('students', 'name email');
-    console.log("Backend: getClassById - After findById and populate. classItem exists:", !!classItem);
-    if (classItem) {
-      console.log("Backend: getClassById - Full classItem object (after populate):");
-      console.log(JSON.stringify(classItem, null, 2));
-      console.log("Backend: getClassById - classItem.teacher (after populate):");
-      console.log(classItem.teacher);
-    }
-    console.log("Backend: getClassById - Full req.user object:");
-    console.log(JSON.stringify(req.user, null, 2));
-    console.log("Backend: getClassById - Class found (or not):", classItem ? classItem._id : 'null');
+    const classItem = await Class.findById(req.params.id);
 
     if (!classItem) {
-      console.log('Class not found for id:', req.params.id);
       return res.status(404).json({ msg: 'Class not found' });
     }
 
-    // CRITICAL: Ensure classItem.teacher is populated and valid
-    if (!classItem.teacher || !classItem.teacher._id) {
-      console.error('Data Integrity Error: Class', classItem._id, 'has an invalid or unpopulated teacher field.');
-      // Attempt to find the user by firebaseUid if teacher is missing, to provide more context
-      const userByFirebaseUid = await User.findOne({ firebaseUid: req.user.uid });
-      console.error('Current authenticated user (from Firebase UID):', userByFirebaseUid ? userByFirebaseUid._id : 'Not found');
-      return res.status(500).json({ msg: 'Server error: Class data is incomplete or corrupted (teacher not found).' });
-    }
-
     // Check if the user is either the teacher or a student in the class
-    const isTeacher = classItem.teacher._id.toString() === req.user.dbUser._id.toString();
-    const isStudent = classItem.students.some(student => student._id.toString() === req.user.dbUser._id.toString());
-
-    console.log('isTeacher:', isTeacher, 'isStudent:', isStudent);
+    const isTeacher = classItem.teacher === req.user.dbUser.id;
+    const isStudent = classItem.students.includes(req.user.dbUser.id);
 
     if (!isTeacher && !isStudent) {
-      console.log('User not authorized for this class:', req.user.dbUser._id);
       return res.status(403).json({ msg: 'Not authorized to access this class' });
     }
-    console.log("Backend: getClassById - Sending response...");
+
     res.json(classItem);
   } catch (err) {
     console.error('Error in getClassById:', err);
@@ -100,10 +71,6 @@ exports.getClassById = async (req, res) => {
 
 // @desc    Join a class
 exports.joinClass = async (req, res) => {
-  console.log('Backend: joinClass - Received request to join class.');
-  console.log('Backend: joinClass - req.body:', req.body);
-  console.log('Backend: joinClass - req.user.dbUser:', req.user.dbUser);
-
   // Only students can join classes
   if (req.user.dbUser.role !== 'Student') {
     return res.status(403).json({ msg: 'Only students can join classes' });
@@ -112,20 +79,20 @@ exports.joinClass = async (req, res) => {
   const { inviteCode } = req.body;
 
   try {
-    const course = await Class.findOne({ inviteCode });
+    const course = await Class.findByInviteCode(inviteCode);
     if (!course) {
       return res.status(404).json({ msg: 'Class not found' });
     }
 
     // Add student to class if not already enrolled
-    if (!course.students.includes(req.user.dbUser._id)) {
-      course.students.push(req.user.dbUser._id);
-      await course.save();
+    if (!course.students.includes(req.user.dbUser.id)) {
+      const updatedStudents = [...course.students, req.user.dbUser.id];
+      await Class.update(course.id, { students: updatedStudents });
     }
 
     res.json(course);
   } catch (err) {
-    console.error(err.message);
+    console.error('Error in joinClass:', err);
     res.status(500).send('Server error');
   }
 };
@@ -135,42 +102,33 @@ exports.joinClass = async (req, res) => {
 exports.getGradebook = async (req, res) => {
   try {
     const classId = req.params.id;
-    console.log("Backend: getGradebook - Received classId:", classId);
 
     // Ensure user is authorized (teacher of the class or a student in the class)
-    const classItem = await Class.findById(classId).populate('students', 'name email');
-    console.log("Backend: getGradebook - Class found (or not):", classItem ? classItem._id : 'null');
+    const classItem = await Class.findById(classId);
 
     if (!classItem) {
       return res.status(404).json({ msg: 'Class not found' });
     }
 
-    const isTeacher = classItem.teacher.toString() === req.user.dbUser._id.toString();
-    const isStudent = classItem.students.some(student => student._id.toString() === req.user.dbUser._id.toString());
-    console.log('isTeacher:', isTeacher, 'isStudent:', isStudent);
+    const isTeacher = classItem.teacher === req.user.dbUser.id;
+    const isStudent = classItem.students.includes(req.user.dbUser.id);
 
     if (!isTeacher && !isStudent) {
       return res.status(403).json({ msg: 'Not authorized to access this gradebook' });
     }
 
     // Get all quizzes for this class
-    console.log("Backend: getGradebook - Fetching quizzes for class...");
-    const quizzesInClass = await Quiz.find({ class: classId });
-    const quizIds = quizzesInClass.map(quiz => quiz._id);
-    console.log("Backend: getGradebook - Found quizzes:", quizIds.length);
+    const quizzesInClass = await Quiz.getQuizzesForClass(classId);
+    const quizIds = quizzesInClass.map(quiz => quiz.id);
 
     // Get all quiz results for these quizzes
-    console.log("Backend: getGradebook - Fetching quiz results...");
-    const allQuizResults = await QuizResult.find({
-      quiz: { $in: quizIds },
-      student: { $in: classItem.students.map(s => s._id) }
-    }).populate('student', 'name email');
-    console.log("Backend: getGradebook - Found quiz results:", allQuizResults.length);
+    const allQuizResults = await QuizResult.getResultsForQuizzes(quizIds);
 
     // Calculate average scores for each student
-    const gradebook = classItem.students.map(student => {
+    const gradebook = await Promise.all(classItem.students.map(async studentId => {
+      const student = await User.findByFirebaseUid(studentId);
       const studentResults = allQuizResults.filter(result =>
-        result.student._id.toString() === student._id.toString()
+        result.student === studentId
       );
 
       let totalPointsScored = 0;
@@ -184,16 +142,16 @@ exports.getGradebook = async (req, res) => {
       const averageScore = totalPointsPossible > 0 ? (totalPointsScored / totalPointsPossible) * 100 : 0;
 
       return {
-        id: student._id,
+        id: student.id,
         name: student.name,
         email: student.email,
         averageScore: parseFloat(averageScore.toFixed(2)), // Round to 2 decimal places
       };
-    });
-    console.log("Backend: getGradebook - Gradebook calculated. Sending response...");
+    }));
+
     res.json(gradebook);
   } catch (err) {
-    console.error('Error in getGradebook:', err.message);
+    console.error('Error in getGradebook:', err);
     res.status(500).send('Server error');
   }
 };
@@ -204,34 +162,31 @@ exports.getGradebook = async (req, res) => {
 exports.getMyGrades = async (req, res) => {
   try {
     const classId = req.params.id;
-    const studentId = req.user.dbUser._id;
+    const studentId = req.user.dbUser.id;
 
     // Ensure the user is a student in this class
-    const classItem = await Class.findOne({ _id: classId, students: studentId });
-    if (!classItem) {
+    const classItem = await Class.findById(classId);
+    if (!classItem || !classItem.students.includes(studentId)) {
       return res.status(403).json({ msg: 'Not authorized to view grades for this class' });
     }
 
     // Get all quizzes for this class
-    const quizzesInClass = await Quiz.find({ class: classId }).select('_id title');
-    const quizIds = quizzesInClass.map(quiz => quiz._id);
+    const quizzesInClass = await Quiz.getQuizzesForClass(classId);
+    const quizIds = quizzesInClass.map(quiz => quiz.id);
 
     // Get all quiz results for this student for these quizzes
-    const studentQuizResults = await QuizResult.find({
-      quiz: { $in: quizIds },
-      student: studentId
-    }).populate('quiz', 'title');
+    const studentQuizResults = await QuizResult.getResultsForStudentInQuizzes(studentId, quizIds);
 
     const myGrades = studentQuizResults.map(result => ({
-      quizId: result.quiz._id,
-      quizTitle: result.quiz.title,
+      quizId: result.quiz,
+      quizTitle: quizzesInClass.find(q => q.id === result.quiz).title,
       score: (result.score / result.totalQuestions) * 100,
       isLate: result.isLate || false,
     }));
 
     res.json(myGrades);
   } catch (err) {
-    console.error(err.message);
+    console.error('Error in getMyGrades:', err);
     res.status(500).send('Server error');
   }
 };
@@ -241,21 +196,22 @@ exports.exportClassData = async (req, res) => {
     const classId = req.params.id;
 
     // Ensure user is authorized (teacher of the class)
-    const classItem = await Class.findById(classId).populate('teacher', 'name email').populate('students', 'name email');
+    const classItem = await Class.findById(classId);
 
     if (!classItem) {
       return res.status(404).json({ msg: 'Class not found' });
     }
 
-    if (classItem.teacher._id.toString() !== req.user.dbUser._id.toString()) {
+    if (classItem.teacher !== req.user.dbUser.id) {
       return res.status(403).json({ msg: 'Not authorized to export data for this class' });
     }
 
     let csvContent = '';
 
     // Section 1: Class Overview
+    const teacher = await User.findByFirebaseUid(classItem.teacher);
     csvContent += `Class Name:,${classItem.name}\n`;
-    csvContent += `Teacher:,${classItem.teacher.name}\n`;
+    csvContent += `Teacher:,${teacher.name}\n`;
     csvContent += `Invite Code:,${classItem.inviteCode}\n`;
     csvContent += `Export Date:,${new Date().toLocaleString()}\n\n`;
 
@@ -263,13 +219,14 @@ exports.exportClassData = async (req, res) => {
     csvContent += 'Class Performance Summary\n';
     csvContent += 'Category,Topic,Average Score (%)\n';
 
-    const quizzesInClass = await Quiz.find({ class: classId });
-    const quizIds = quizzesInClass.map(quiz => quiz._id);
-    const allQuizResults = await QuizResult.find({ quiz: { $in: quizIds } }).populate('quiz', 'topic');
+    const quizzesInClass = await Quiz.getQuizzesForClass(classId);
+    const quizIds = quizzesInClass.map(quiz => quiz.id);
+    const allQuizResults = await QuizResult.getResultsForQuizzes(quizIds);
 
     const topicScores = {};
     allQuizResults.forEach(result => {
-      const { topic } = result.quiz;
+      const quiz = quizzesInClass.find(q => q.id === result.quiz);
+      const { topic } = quiz;
       const score = (result.score / result.totalQuestions) * 100;
       if (!topicScores[topic]) {
         topicScores[topic] = [];
@@ -299,8 +256,8 @@ exports.exportClassData = async (req, res) => {
     const studentTotalScores = new Map(); // Map<studentId, { totalScored, totalPossible }>
 
     allQuizResults.forEach(result => {
-      const studentId = result.student.toString();
-      const quizId = result.quiz._id.toString();
+      const studentId = result.student;
+      const quizId = result.quiz;
       const score = (result.score / result.totalQuestions) * 100;
 
       if (!studentQuizResultsMap.has(studentId)) {
@@ -323,30 +280,35 @@ exports.exportClassData = async (req, res) => {
     csvContent += studentHeaders;
 
     // Populate student rows
-    classItem.students.forEach(student => {
+    await Promise.all(classItem.students.map(async studentId => {
+      const student = await User.findByFirebaseUid(studentId);
       let studentRow = `"${student.name}","${student.email}"`;
-      const studentResults = studentQuizResultsMap.get(student._id.toString()) || new Map();
+      const studentResults = studentQuizResultsMap.get(studentId) || new Map();
 
       quizIds.forEach(quizId => {
-        const score = studentResults.has(quizId.toString()) ? studentResults.get(quizId.toString()).toFixed(2) : 'N/A';
+        const score = studentResults.has(quizId) ? studentResults.get(quizId).toFixed(2) : 'N/A';
         studentRow += `,${score}`;
       });
 
-      const overallTotals = studentTotalScores.get(student._id.toString());
+      const overallTotals = studentTotalScores.get(studentId);
       const overallAverage = overallTotals && overallTotals.totalPossible > 0
         ? ((overallTotals.totalScored / overallTotals.totalPossible) * 100).toFixed(2)
         : 'N/A';
       studentRow += `,${overallAverage}\n`;
       csvContent += studentRow;
-    });
+    }));
 
     res.header('Content-Type', 'text/csv');
     res.attachment(`${classItem.name.replace(/\s/g, '_')}_Class_Report.csv`);
     res.send(csvContent);
 
   } catch (err) {
-    console.error('Error exporting class data:', err.message);
+    console.error('Error exporting class data:', err);
     res.status(500).send('Server error');
   }
 };
+
+
+
+
 

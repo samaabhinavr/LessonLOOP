@@ -27,7 +27,7 @@ export default function ResetPassword() {
     }
 
     try {
-      const res = await axios.put(`http://localhost:5000/api/auth/reset-password/${token}`, { password });
+      const res = await axios.put(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/auth/reset-password/${token}`, { password });
       setMessage(res.data.msg || 'Your password has been reset successfully. You can now log in.');
       setTimeout(() => {
         navigate('/');

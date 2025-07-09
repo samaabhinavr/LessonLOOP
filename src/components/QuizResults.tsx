@@ -22,6 +22,8 @@ export default function QuizResults() {
 
   const [quizResults, setQuizResults] = useState<QuizResult[]>([]);
   const [quizTitle, setQuizTitle] = useState('');
+  const [isLoading, setIsLoading] = useState(true); // New loading state
+  const [error, setError] = useState<string | null>(null); // New error state
 
   useEffect(() => {
     if (user?.role !== 'Teacher') {
@@ -30,21 +32,29 @@ export default function QuizResults() {
     }
 
     const fetchQuizResults = async () => {
-      if (quizId) {
-        try {
-          const res = await axios.get(`http://localhost:5000/api/quizzes/results/${quizId}`);
-          setQuizResults(res.data);
-          // Optionally fetch quiz title from the first result or a separate API call
-          if (res.data.length > 0) {
-            // Assuming quiz title can be derived or fetched separately
-            // For now, let's make another call to get quiz details
-            const quizRes = await axios.get(`http://localhost:5000/api/quizzes/quiz/${quizId}`);
-            setQuizTitle(quizRes.data.title);
-          }
-        } catch (err) {
-          console.error('Error fetching quiz results:', err);
-          navigate(-1); // Go back if results not found or error
-        }
+      if (!quizId) {
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const [resultsRes, quizRes] = await Promise.all([
+          axios.get(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/quizzes/results/${quizId}`),
+          axios.get(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/quizzes/quiz/${quizId}`)
+        ]);
+        
+        setQuizResults(resultsRes.data);
+        setQuizTitle(quizRes.data.title);
+
+      } catch (err: any) {
+        console.error('Error fetching quiz results:', err);
+        setError(err.response?.data?.message || 'Failed to load quiz results. Please try again.');
+        // navigate(-1); // Go back if results not found or error - removed for error display
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchQuizResults();
@@ -56,6 +66,24 @@ export default function QuizResults() {
 
   if (user?.role !== 'Teacher') {
     return <div className="min-h-screen flex items-center justify-center">Access Denied.</div>;
+  }
+
+  if (isLoading) {
+    return <div className="min-h-screen flex items-center justify-center text-lg text-slate-600">Loading quiz results...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-red-50">
+        <p className="text-lg text-red-800 mb-4">Error: {error}</p>
+        <button
+          onClick={() => navigate(-1)}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+        >
+          Go Back
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -104,7 +132,7 @@ export default function QuizResults() {
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {quizResults.map((result) => (
-                    <tr key={result._id} className="hover:bg-slate-50 cursor-pointer" onClick={() => navigate(`/quiz/${result.quiz}/attempt/${result._id}`)}>
+                    <tr key={result.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => navigate(`/quiz/${result.quiz}/attempt/${result.id}`)}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-slate-900">{result.student.name}</div>
                         <div className="text-xs text-slate-500">{result.student.email}</div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { usePoll } from '../context/PollContext';
@@ -6,7 +6,7 @@ import axios from 'axios';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
 import { PlusCircle, Send, Check, X, Triangle, Square, Circle, Diamond } from 'lucide-react';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF4560'];
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF69B4'];
 
 const POLL_OPTIONS_THEME = [
   { color: '#FF4560', icon: Triangle }, // Red
@@ -20,80 +20,100 @@ const POLL_OPTIONS_THEME = [
 const LivePoll = () => {
   const { id: classId } = useParams<{ id: string }>();
   const { user } = useAuth();
-  const { socket, activePoll, setActivePoll } = usePoll();
+  const { activePoll, setActivePoll } = usePoll();
   const [voted, setVoted] = useState(false);
-  const [selectedOption, setSelectedOption] = useState(null);
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
 
   // Teacher-specific state
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState(['', '']);
-  const [correctAnswer, setCorrectAnswer] = useState(null);
+  const [correctAnswer, setCorrectAnswer] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (classId && socket) {
-      socket.emit('joinClass', classId);
-
-      const fetchActivePoll = async () => {
-        try {
-          const res = await axios.get(`http://localhost:5000/api/polls/active/${classId}`);
-          if (res.data) {
-            setActivePoll(res.data);
-            // Check if the current user has already voted on this poll
-            if (user && user.dbUser && res.data.votedUsers.includes(user.dbUser._id)) {
-              setVoted(true);
-            } else {
-              setVoted(false);
-            }
+  const fetchActivePoll = useCallback(async () => {
+    if (classId) {
+      try {
+        const res = await axios.get(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/polls/active/${classId}`);
+        if (res.data) {
+          setActivePoll(res.data);
+          if (user && user.id && res.data.votedUsers.includes(user.id)) {
+            setVoted(true);
           } else {
-            setActivePoll(null);
             setVoted(false);
           }
-        } catch (err) {
-          console.error('Error fetching active poll:', err);
+        } else {
           setActivePoll(null);
           setVoted(false);
         }
-      };
-
-      fetchActivePoll();
+      } catch (err) {
+        console.error('Error fetching active poll:', err);
+        setActivePoll(null);
+        setVoted(false);
+      }
     }
-  }, [classId, socket, setActivePoll, user]); // Added user to dependencies
+  }, [classId, setActivePoll, user]);
 
-  // Reset voted state when activePoll changes (e.g., new poll created)
   useEffect(() => {
-    if (activePoll && user && user.dbUser && activePoll.votedUsers.includes(user.dbUser._id)) {
+    fetchActivePoll();
+    const interval = setInterval(fetchActivePoll, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, [fetchActivePoll]);
+
+  useEffect(() => {
+    if (activePoll && user && user.id && activePoll.votedUsers.includes(user.id)) {
       setVoted(true);
     } else {
       setVoted(false);
     }
   }, [activePoll, user]);
 
-  const handleCreatePoll = () => {
-    if (question && options.every(o => o) && correctAnswer !== null && socket && user?.dbUser?._id) {
-      socket.emit('createPoll', {
-        classId,
-        question,
-        options,
-        correctAnswer,
-        userId: user.dbUser._id,
-      });
+  const handleCreatePoll = async () => {
+    if (question && options.every(o => o) && correctAnswer !== null && classId) {
+      try {
+        const res = await axios.post(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/polls`, {
+          classId,
+          question,
+          options,
+          correctAnswer,
+        });
+        setActivePoll(res.data);
+        setQuestion('');
+        setOptions(['', '']);
+        setCorrectAnswer(null);
+      } catch (err) {
+        console.error('Error creating poll:', err);
+        alert(err.response?.data?.msg || 'Failed to create poll.');
+      }
     } else {
-      console.error('Cannot create poll: Missing question, options, correct answer, socket, or user ID.');
+      alert('Please fill in all poll details and select a correct answer.');
     }
   };
 
-  const handleVote = (optionIndex) => {
-    if (!voted && activePoll && socket) {
-      setSelectedOption(optionIndex);
-      const currentUserId = user && user.dbUser ? user.dbUser._id : null; // Safely get userId, will be null if not logged in
-      socket.emit('vote', { pollId: activePoll._id, optionIndex, userId: currentUserId });
-      setVoted(true);
+  const handleVote = async (optionIndex: number) => {
+    if (!voted && activePoll && user && user.id) {
+      try {
+        const res = await axios.post(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/polls/vote`, {
+          pollId: activePoll.id,
+          optionIndex,
+        });
+        setActivePoll(res.data);
+        setVoted(true);
+        setSelectedOption(optionIndex);
+      } catch (err) {
+        console.error('Error voting on poll:', err);
+        alert(err.response?.data?.msg || 'Failed to vote on poll.');
+      }
     }
   };
 
-  const handleEndPoll = () => {
-    if (activePoll && socket) {
-      socket.emit('endPoll', activePoll._id);
+  const handleEndPoll = async () => {
+    if (activePoll) {
+      try {
+        const res = await axios.put(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/polls/end/${activePoll.id}`);
+        setActivePoll(res.data);
+      } catch (err) {
+        console.error('Error ending poll:', err);
+        alert(err.response?.data?.msg || 'Failed to end poll.');
+      }
     }
   };
 
@@ -103,7 +123,7 @@ const LivePoll = () => {
     }
   };
 
-  const handleOptionChange = (index, value) => {
+  const handleOptionChange = (index: number, value: string) => {
     const newOptions = [...options];
     newOptions[index] = value;
     setOptions(newOptions);
@@ -165,7 +185,7 @@ const LivePoll = () => {
               <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <XAxis dataKey="name" tick={false} />
                 <YAxis allowDecimals={false} hide />
-                <Tooltip formatter={(value) => [`${value} votes`, 'Option']} />
+                <Tooltip formatter={(value: number) => [`${value} votes`, 'Option']} />
                 <Bar dataKey="votes" barSize={80}>
                   {chartData.map((entry, index) => (
                     <Cell
@@ -176,7 +196,7 @@ const LivePoll = () => {
                   <LabelList
                     dataKey="votes"
                     position="top"
-                    content={(props) => {
+                    content={(props: any) => {
                       const { x, y, width, value, index: dataIndex } = props;
                       const Icon = POLL_OPTIONS_THEME[dataIndex]?.icon;
                       const isCorrect = dataIndex === activePoll.correctAnswer;

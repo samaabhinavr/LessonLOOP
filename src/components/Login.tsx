@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mail, Lock, Eye, EyeOff, GraduationCap, Users, UserPlus } from 'lucide-react';
 import { useAuth, UserRole } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -8,14 +9,19 @@ export default function Login() {
   const [name, setName] = useState('');
   const [teacherCode, setTeacherCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [selectedRole, setSelectedRole] = useState<UserRole>('Student');
   const [isRegistering, setIsRegistering] = useState(false);
-  const { login, register } = useAuth();
+  const { login, register, isLoading, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthenticated && !isLoading) {
+      navigate('/dashboard');
+    }
+  }, [isAuthenticated, isLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     try {
       if (isRegistering) {
         await register(email, password, name, selectedRole, teacherCode);
@@ -27,8 +33,6 @@ export default function Login() {
     } catch (error: any) {
       console.error(isRegistering ? 'Registration failed:' : 'Login failed:', error.message);
       alert(`Authentication failed: ${error.message}`);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -173,7 +177,7 @@ export default function Login() {
                   {isRegistering ? 'Registering...' : 'Signing in...'}
                 </div>
               ) : (
-                isRegistering ? `Register as ${selectedRole}` : `Sign In as ${selectedRole}`
+                isRegistering ? `Register as ${selectedRole}` : `Sign In`
               )}
             </button>
           </form>

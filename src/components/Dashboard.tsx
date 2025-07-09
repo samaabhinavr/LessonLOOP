@@ -1,19 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LogOut, BookOpen, Users, ChevronRight, GraduationCap, PlusCircle, User as UserIcon, Settings, Upload, Bell } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 
 interface Class {
-  _id: string;
+  id: string;
   name: string;
   teacher: string; // Teacher ID
+  teacherName?: string; // Added teacherName
   students: string[]; // Array of student IDs
   inviteCode: string;
 }
 
 interface Notification {
-  _id: string;
+  id: string;
   recipient: string;
   type: 'newQuiz' | 'newPoll';
   message: string;
@@ -23,7 +24,7 @@ interface Notification {
 }
 
 export default function Dashboard() {
-  const { user, logout, updateUser, setAuthToken } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const isTeacher = user?.role === 'Teacher';
 
@@ -39,12 +40,21 @@ export default function Dashboard() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
 
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await axios.get('https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/notifications');
+      setNotifications(res.data);
+    } catch (err) {
+      console.error('Error fetching notifications:', err);
+    }
+  }, []);
+
   useEffect(() => {
     if (!user) return; // Only fetch data if user is authenticated
 
     const fetchClasses = async () => {
       try {
-        const res = await axios.get('http://localhost:5000/api/classes');
+        const res = await axios.get('https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/classes');
         setClasses(res.data);
       } catch (err) {
         console.error('Error fetching classes:', err);
@@ -54,7 +64,7 @@ export default function Dashboard() {
     const fetchAverageGrade = async () => {
       if (!isTeacher) {
         try {
-          const res = await axios.get('http://localhost:5000/api/student/average-grade');
+          const res = await axios.get('https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/student/average-grade');
           setAverageGrade(res.data.averageGrade);
         } catch (err) {
           console.error('Error fetching average grade:', err);
@@ -62,35 +72,15 @@ export default function Dashboard() {
       }
     };
 
-    const fetchNotifications = async () => {
-      try {
-        const res = await axios.get('http://localhost:5000/api/notifications');
-        setNotifications(res.data);
-      } catch (err) {
-        console.error('Error fetching notifications:', err);
-      }
-    };
-
     fetchClasses();
     fetchAverageGrade();
-    if (!isTeacher) {
-      fetchNotifications();
-    }
-  }, [user, isTeacher]);
-
-  const fetchNotifications = async () => {
-    try {
-      const res = await axios.get('http://localhost:5000/api/notifications');
-      setNotifications(res.data);
-    } catch (err) {
-      console.error('Error fetching notifications:', err);
-    }
-  };
+    fetchNotifications(); // <--- Added this line
+  }, [user, isTeacher, fetchNotifications]);
 
   const markNotificationAsRead = async (id: string) => {
     try {
-      await axios.put(`http://localhost:5000/api/notifications/mark-read/${id}`);
-      setNotifications(notifications.map(notif => notif._id === id ? { ...notif, read: true } : notif));
+      await axios.put(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/notifications/mark-read/${id}`);
+      setNotifications(notifications.map(notif => notif.id === id ? { ...notif, read: true } : notif));
     } catch (err) {
       console.error('Error marking notification as read:', err);
     }
@@ -98,7 +88,7 @@ export default function Dashboard() {
 
   const markAllNotificationsAsRead = async () => {
     try {
-      await axios.put('http://localhost:5000/api/notifications/mark-all-read');
+      await axios.put('https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/notifications/mark-all-read');
       setNotifications(notifications.map(notif => ({ ...notif, read: true })));
     } catch (err) {
       console.error('Error marking all notifications as read:', err);
@@ -107,8 +97,8 @@ export default function Dashboard() {
 
   const deleteNotification = async (id: string) => {
     try {
-      await axios.delete(`http://localhost:5000/api/notifications/${id}`);
-      setNotifications(notifications.filter(notif => notif._id !== id));
+      await axios.delete(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/notifications/${id}`);
+      setNotifications(notifications.filter(notif => notif.id !== id));
     } catch (err) {
       console.error('Error deleting notification:', err);
     }
@@ -116,7 +106,7 @@ export default function Dashboard() {
 
   const deleteAllReadNotifications = async () => {
     try {
-      await axios.delete('http://localhost:5000/api/notifications/read');
+      await axios.delete('https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/notifications/read');
       setNotifications(notifications.filter(notif => !notif.read));
     } catch (err) {
       console.error('Error deleting all read notifications:', err);
@@ -124,17 +114,24 @@ export default function Dashboard() {
   };
 
   const handleEnterCourse = (classId: string) => {
-    navigate(`/class/${classId}`);
+    if (classId) {
+      navigate(`/class/${classId}`);
+    } else {
+      console.error('Attempted to enter class with undefined ID. This might indicate an issue with class creation where the _id is not returned.');
+      // Optionally, you could show a user-friendly alert here
+    }
   };
 
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await axios.post('http://localhost:5000/api/classes', { name: newClassName });
+      const res = await axios.post('https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/classes', { name: newClassName });
+      console.log('Class creation response data:', res.data);
       setClasses([...classes, res.data]);
       setCreatedInviteCode(res.data.inviteCode);
       setNewClassName('');
-      // setShowCreateClassModal(false); // Keep open to show invite code
+      setShowCreateClassModal(false); // Close modal after creation
+      navigate(`/class/${res.data.id}`); // Navigate to the new class page
     } catch (err) {
       console.error('Error creating class:', err);
     }
@@ -143,7 +140,7 @@ export default function Dashboard() {
   const handleJoinClass = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await axios.post('http://localhost:5000/api/classes/join', { inviteCode: joinInviteCode });
+      const res = await axios.post('https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/classes/join', { inviteCode: joinInviteCode });
       setClasses([...classes, res.data]);
       setJoinInviteCode('');
       setShowJoinClassModal(false);
@@ -159,7 +156,7 @@ export default function Dashboard() {
       formData.append('profilePicture', file);
 
       try {
-        const res = await axios.post('http://localhost:5000/api/auth/upload-profile-picture', formData, {
+        const res = await axios.post('https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/auth/upload-profile-picture', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
@@ -197,7 +194,7 @@ export default function Dashboard() {
               )}
               <div className="relative">
                 <button onClick={() => setProfileMenuOpen(!profileMenuOpen)} className="flex items-center space-x-2">
-                  <img src={user?.profilePicture ? `http://localhost:5000${user.profilePicture}` : 'https://i.pravatar.cc/150?u=a042581f4e29026704d'} alt="Profile" className="w-10 h-10 rounded-full" />
+                  <img src={user?.profilePicture ? `https://asia-south1-lessonloop-633d9.cloudfunctions.net/api${user.profilePicture}` : 'https://i.pravatar.cc/150?u=a042581f4e29026704d'} alt="Profile" className="w-10 h-10 rounded-full" />
                   <span className="text-sm font-medium text-slate-900">{user?.name}</span>
                 </button>
                 {profileMenuOpen && (
@@ -303,7 +300,7 @@ export default function Dashboard() {
             <p className="text-slate-600 col-span-full">{isTeacher ? `You haven't created any classes yet.` : `You haven't joined any classes yet.`}</p>
           ) : (
             classes.map((cls) => (
-              <div key={cls._id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
+              <div key={cls.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
                 {/* Class Header */}
                 <div className="flex items-start justify-between mb-4">
                   <div className={`w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center`}>
@@ -314,11 +311,11 @@ export default function Dashboard() {
                 {/* Class Info */}
                 <h3 className="text-lg font-semibold text-slate-900 mb-2">{cls.name}</h3>
                 {isTeacher && <p className="text-sm text-slate-600 mb-2">Invite Code: <span className="font-mono font-semibold text-blue-600">{cls.inviteCode}</span></p>}
-                <p className="text-sm text-slate-600 mb-4 line-clamp-2">{isTeacher ? `Students enrolled: ${cls.students.length}` : `Students enrolled: ${cls.students.length}`}</p>
+                <p className="text-sm text-slate-600 mb-4 line-clamp-2">{isTeacher ? `Students enrolled: ${cls.students.length}` : `Teacher: ${cls.teacherName || 'N/A'}`}</p>
 
                 {/* Enter Class Button */}
                 <button
-                  onClick={() => handleEnterCourse(cls._id)}
+                  onClick={() => handleEnterCourse(cls.id)}
                   className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center group"
                 >
                   Enter Class
@@ -420,7 +417,7 @@ export default function Dashboard() {
             <h2 className="text-2xl font-bold text-slate-900 mb-4">Profile</h2>
             <div className="flex items-center space-x-4 mb-6">
               <div className="relative">
-                <img src={user?.profilePicture ? `http://localhost:5000${user.profilePicture}` : 'https://i.pravatar.cc/150?u=a042581f4e29026704d'} alt="Profile" className="w-20 h-20 rounded-full" />
+                <img src={user?.profilePicture ? `https://asia-south1-lessonloop-633d9.cloudfunctions.net/api${user.profilePicture}` : 'https://i.pravatar.cc/150?u=a042581f4e29026704d'} alt="Profile" className="w-20 h-20 rounded-full" />
                 <label htmlFor="profilePictureInput" className="absolute bottom-0 right-0 bg-blue-600 text-white rounded-full p-1 cursor-pointer hover:bg-blue-700">
                   <Upload className="w-4 h-4" />
                   <input id="profilePictureInput" type="file" className="hidden" onChange={handleProfilePictureUpload} />
@@ -458,7 +455,7 @@ export default function Dashboard() {
               <div className="space-y-4">
                 {notifications.map((notification) => (
                   <div
-                    key={notification._id}
+                    key={notification.id}
                     className={`p-4 rounded-lg border ${notification.read ? 'bg-slate-50 border-slate-200' : 'bg-blue-50 border-blue-200'} flex justify-between items-center`}
                   >
                     <div>
@@ -468,7 +465,7 @@ export default function Dashboard() {
                     <div className="flex items-center space-x-2">
                       {!notification.read && (
                         <button
-                          onClick={() => markNotificationAsRead(notification._id)}
+                          onClick={() => markNotificationAsRead(notification.id)}
                           className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1 rounded-full"
                         >
                           Mark as Read
@@ -476,7 +473,7 @@ export default function Dashboard() {
                       )}
                       {notification.read && (
                         <button
-                          onClick={() => deleteNotification(notification._id)}
+                          onClick={() => deleteNotification(notification.id)}
                           className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1 rounded-full"
                         >
                           Delete

@@ -13,17 +13,7 @@ router.post('/', auth, authorize('Teacher'), classController.createClass);
 // @route   GET api/classes
 // @desc    Get all classes for a user (student or teacher)
 // @access  Private
-router.get('/', auth, classController.getClasses);
-
-// @route   GET api/classes/:id
-// @desc    Get a single class by ID
-// @access  Private
-
-
-// @route   GET api/classes/:id
-// @desc    Get a single class by ID
-// @access  Private
-router.get('/:id', auth, classController.getClassById);
+router.get('/', auth, classController.getClasses);router.get('/:id', auth, classController.getClassById);
 
 // @route   POST api/classes/join
 // @desc    Join a class with an invite code

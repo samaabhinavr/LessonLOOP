@@ -26,4 +26,4 @@ dist-ssr
 server/serviceAccountKey.json
 # MongoDB data directory
 server/data/
-server/uploads/
+server/uploads/serviceAccountKey.json 

@@ -38,7 +38,7 @@ export default function QuizAttemptView() {
   useEffect(() => {
     const fetchQuizData = async () => {
       try {
-        const quizRes = await axios.get(`http://localhost:5000/api/quizzes/quiz/${quizId}`);
+        const quizRes = await axios.get(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/quizzes/quiz/${quizId}`);
         setQuiz(quizRes.data);
       } catch (err) {
         console.error('Error fetching quiz:', err);
@@ -51,7 +51,7 @@ export default function QuizAttemptView() {
 
     const fetchQuizResult = async () => {
       try {
-        const resultRes = await axios.get(`http://localhost:5000/api/quizzes/result/${quizId}/attempt/${attemptId}`);
+        const resultRes = await axios.get(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/quizzes/result/${quizId}/attempt/${attemptId}`);
         setQuizResult(resultRes.data);
       } catch (err) {
         console.error('Error fetching quiz result:', err);

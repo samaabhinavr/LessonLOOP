@@ -1,13 +1,12 @@
 
-const Quiz = require('../models/Quiz');
-const Class = require('../models/Class');
-const QuizResult = require('../models/QuizResult');
-const Notification = require('../models/Notification');
+const Quiz = require('../firestore/models/Quiz');
+const Class = require('../firestore/models/Class');
+const QuizResult = require('../firestore/models/QuizResult');
+const Notification = require('../firestore/models/Notification');
+const User = require('../firestore/models/User'); // Import User model
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-console.log('Gemini API Key loaded:', process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.substring(0, 5) + '...' : 'Not set');
-
 
 // @desc    Create a new quiz
 // @route   POST /api/quizzes
@@ -22,8 +21,8 @@ exports.createQuiz = async (req, res) => {
 
   try {
     // Verify the class exists and the teacher owns it
-    const existingClass = await Class.findOne({ _id: classId, teacher: req.user.dbUser._id });
-    if (!existingClass) {
+    const existingClass = await Class.findById(classId);
+    if (!existingClass || existingClass.teacher !== req.user.dbUser.id) {
       return res.status(404).json({ msg: 'Class not found or you do not have permission to create quizzes for this class' });
     }
 
@@ -34,34 +33,31 @@ exports.createQuiz = async (req, res) => {
         const [hours, minutes] = dueTime.split(':');
         dueDateTime.setHours(hours);
         dueDateTime.setMinutes(minutes);
-      } else {
-        // If no specific time is provided, set to end of the day
-        dueDateTime.setHours(23, 59, 59, 999);
       }
     }
 
-    const newQuiz = new Quiz({
+    const newQuiz = {
       class: classId,
       title,
       topic,
       difficulty,
       questions,
-      createdBy: req.user.dbUser._id,
-      dueDate: dueDateTime,
-    });
+      createdBy: req.user.dbUser.id,
+      dueDate: dueDateTime || null,
+      status: 'Draft',
+    };
 
-    const quiz = await newQuiz.save();
+    const quiz = await Quiz.create(newQuiz);
 
     // Notify students in the class
-    const currentClass = await Class.findById(classId);
-    if (currentClass && currentClass.students.length > 0) {
-      const notifications = currentClass.students.map(studentId => ({
+    if (existingClass && existingClass.students.length > 0) {
+      const notifications = existingClass.students.map(studentId => ({
         recipient: studentId,
         type: 'newQuiz',
-        message: `A new quiz "${title}" has been posted in ${currentClass.name}.`,
-        link: `/class/${classId}`, // Link to the class page where quizzes are listed
+        message: `A new quiz "${title}" has been posted in ${existingClass.name}.`,
+        link: `/class/${classId}`,
       }));
-      await Notification.insertMany(notifications);
+      await Notification.createMany(notifications);
     }
 
     res.status(201).json(quiz);
@@ -76,10 +72,7 @@ exports.createQuiz = async (req, res) => {
 // @access  Private (Teacher/Student)
 exports.getQuizzes = async (req, res) => {
   try {
-    console.log("Backend: getQuizzes - Received classId:", req.params.classId);
-    console.log("Backend: getQuizzes - Attempting to find quizzes and populate createdBy...");
-    const quizzes = await Quiz.find({ class: req.params.classId }).populate('createdBy', 'name email').select('+difficulty');
-    console.log("Backend: getQuizzes - Found quizzes:", quizzes.length);
+    const quizzes = await Quiz.getQuizzesForClass(req.params.classId);
     res.json(quizzes);
   } catch (err) {
     console.error('Error in getQuizzes:', err.message);
@@ -92,19 +85,18 @@ exports.getQuizzes = async (req, res) => {
 // @access  Private (Teacher/Student)
 exports.getQuizById = async (req, res) => {
   try {
-    const quiz = await Quiz.findById(req.params.id).populate('createdBy', 'name email');
+    const quiz = await Quiz.findById(req.params.id);
 
     if (!quiz) {
       return res.status(404).json({ msg: 'Quiz not found' });
     }
 
     // Ensure user has access to the quiz's class
-    const userClass = await Class.findOne({
-      _id: quiz.class,
-      $or: [{ teacher: req.user.dbUser._id }, { students: req.user.dbUser._id }],
-    });
+    const userClass = await Class.findById(quiz.class);
+    const isTeacher = userClass.teacher === req.user.dbUser.id;
+    const isStudent = userClass.students.includes(req.user.dbUser.id);
 
-    if (!userClass) {
+    if (!isTeacher && !isStudent) {
       return res.status(403).json({ msg: 'Not authorized to access this quiz' });
     }
 
@@ -134,13 +126,15 @@ exports.updateQuiz = async (req, res) => {
     }
 
     // Ensure teacher created this quiz
-    if (quiz.createdBy.toString() !== req.user.dbUser._id.toString()) {
+    if (quiz.createdBy !== req.user.dbUser.id) {
       return res.status(403).json({ msg: 'Not authorized to update this quiz' });
     }
 
-    quiz.title = title || quiz.title;
-    quiz.questions = questions || quiz.questions;
-    quiz.status = status || quiz.status;
+    const updatedData = {
+      title: title || quiz.title,
+      questions: questions || quiz.questions,
+      status: status || quiz.status,
+    };
 
     if (dueDate) {
       let dueDateTime = new Date(dueDate);
@@ -149,13 +143,13 @@ exports.updateQuiz = async (req, res) => {
         dueDateTime.setHours(hours);
         dueDateTime.setMinutes(minutes);
       }
-      quiz.dueDate = dueDateTime;
+      updatedData.dueDate = dueDateTime;
     } else {
-      quiz.dueDate = null;
+      updatedData.dueDate = null;
     }
 
-    await quiz.save();
-    res.json(quiz);
+    await Quiz.update(req.params.id, updatedData);
+    res.json({ ...quiz, ...updatedData });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
@@ -179,11 +173,11 @@ exports.deleteQuiz = async (req, res) => {
     }
 
     // Ensure teacher created this quiz
-    if (quiz.createdBy.toString() !== req.user.dbUser._id.toString()) {
+    if (quiz.createdBy !== req.user.dbUser.id) {
       return res.status(403).json({ msg: 'Not authorized to delete this quiz' });
     }
 
-    await quiz.deleteOne();
+    await Quiz.delete(req.params.id);
     res.json({ msg: 'Quiz removed' });
   } catch (err) {
     console.error(err.message);
@@ -208,13 +202,12 @@ exports.publishQuiz = async (req, res) => {
     }
 
     // Ensure teacher created this quiz
-    if (quiz.createdBy.toString() !== req.user.dbUser._id.toString()) {
+    if (quiz.createdBy !== req.user.dbUser.id) {
       return res.status(403).json({ msg: 'Not authorized to publish this quiz' });
     }
 
-    quiz.status = 'Published';
-    await quiz.save();
-    res.json(quiz);
+    await Quiz.update(req.params.id, { status: 'Published' });
+    res.json({ ...quiz, status: 'Published' });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
@@ -244,7 +237,7 @@ exports.submitQuiz = async (req, res) => {
     }
 
     // Check if student has already submitted this quiz
-    const existingResult = await QuizResult.findOne({ quiz: quiz._id, student: req.user.dbUser._id });
+    const existingResult = await QuizResult.findResult(req.params.id, req.user.dbUser.id);
     if (existingResult) {
       return res.status(400).json({ msg: 'You have already submitted this quiz' });
     }
@@ -267,18 +260,18 @@ exports.submitQuiz = async (req, res) => {
     const isLate = quiz.dueDate && new Date() > new Date(quiz.dueDate);
 
     // Save the quiz result
-    const quizResult = new QuizResult({
-      quiz: quiz._id,
-      student: req.user.dbUser._id,
+    const quizResult = {
+      quiz: req.params.id,
+      student: req.user.dbUser.id,
       answers: studentAnswers,
       score: score,
       totalQuestions: quiz.questions.length,
       isLate: isLate,
-    });
+    };
 
-    await quizResult.save();
+    const newResult = await QuizResult.create(quizResult);
 
-    res.json({ score, totalQuestions: quiz.questions.length, quizResultId: quizResult._id });
+    res.json({ score, totalQuestions: quiz.questions.length, quizResultId: newResult.id });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
@@ -294,8 +287,24 @@ exports.getQuizResultsForQuiz = async (req, res) => {
   }
 
   try {
-    const quizResults = await QuizResult.find({ quiz: req.params.quizId }).populate('student', 'name email').select('+createdAt +isLate'); // Select createdAt and isLate
-    res.json(quizResults);
+    const quizResults = await QuizResult.getResultsForQuiz(req.params.quizId);
+
+    // Extract unique student IDs
+    const studentIds = [...new Set(quizResults.map(result => result.student))];
+
+    // Fetch all unique student details in parallel
+    const students = await Promise.all(studentIds.map(id => User.findByFirebaseUid(id)));
+
+    // Create a map for quick lookup
+    const studentMap = new Map(students.filter(s => s).map(s => [s.id, { _id: s.id, name: s.name, email: s.email }]));
+
+    // Populate student details for each result
+    const populatedResults = quizResults.map(result => ({
+      ...result,
+      student: studentMap.get(result.student) || null, // Use map for efficient lookup
+    }));
+
+    res.json(populatedResults);
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
@@ -311,7 +320,7 @@ exports.getQuizResultForStudent = async (req, res) => {
   }
 
   try {
-    const quizResult = await QuizResult.findOne({ quiz: req.params.quizId, student: req.user.dbUser._id });
+    const quizResult = await QuizResult.findResult(req.params.quizId, req.user.dbUser.id);
 
     if (!quizResult) {
       return res.status(404).json({ msg: 'Quiz result not found for this student' });
@@ -329,7 +338,7 @@ exports.getQuizResultForStudent = async (req, res) => {
 // @access  Private (Teacher/Student)
 exports.getQuizAttemptById = async (req, res) => {
   try {
-    const quizResult = await QuizResult.findById(req.params.attemptId).populate('student', 'name email');
+    const quizResult = await QuizResult.findById(req.params.attemptId);
 
     if (!quizResult) {
       return res.status(404).json({ msg: 'Quiz result not found' });
@@ -337,12 +346,11 @@ exports.getQuizAttemptById = async (req, res) => {
 
     // Ensure user has access to the quiz's class
     const quiz = await Quiz.findById(quizResult.quiz);
-    const userClass = await Class.findOne({
-      _id: quiz.class,
-      $or: [{ teacher: req.user.dbUser._id }, { students: req.user.dbUser._id }],
-    });
+    const userClass = await Class.findById(quiz.class);
+    const isTeacher = userClass.teacher === req.user.dbUser.id;
+    const isStudent = userClass.students.includes(req.user.dbUser.id);
 
-    if (!userClass) {
+    if (!isTeacher && !isStudent) {
       return res.status(403).json({ msg: 'Not authorized to access this quiz result' });
     }
 
@@ -357,22 +365,16 @@ exports.getQuizAttemptById = async (req, res) => {
 // @route   POST /api/quizzes/generate-mcq
 // @access  Private (Teacher)
 exports.generateMCQ = async (req, res) => {
-  console.log('Received request to generate MCQs with body:', req.body);
   const { topic, numQuestions, difficulty, gradeLevel } = req.body;
-
-  
 
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const prompt = `You are an expert quiz creator. Generate ${numQuestions} multiple-choice questions about ${topic} for a ${gradeLevel} grade level from CBSE syllabus, with a difficulty of ${difficulty}. Each question must have exactly 4 options. Your response must be a valid, parsable JSON array of objects. Each object in the array must have the following properties and types: 'questionText' (string), 'options' (an array of exactly 4 objects, each with a 'text' property of type string), 'correctAnswer' (the 0-based index of the correct option, must be a number between 0 and 3), and 'explanation' (a brief explanation for why the correct answer is correct). Return ONLY the JSON array. Do not include any extra text, explanations, or formatting outside of the JSON array.`;
-
-    console.log('Gemini Prompt:', prompt);
+    const prompt = `You are an expert quiz creator. Generate ${numQuestions} multiple-choice questions about ${topic} for a ${gradeLevel} grade level, with a difficulty of ${difficulty}. Each question must have exactly 4 options. Your response must be a valid, parsable JSON array of objects. Each object in the array must have the following properties and types: 'questionText' (string), 'options' (an array of exactly 4 objects, each with a 'text' property of type string), 'correctAnswer' (the 0-based index of the correct option, must be a number between 0 and 3), and 'explanation' (a brief explanation for why the correct answer is correct). Return ONLY the JSON array. Do not include any extra text, explanations, or formatting outside of the JSON array.`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
     let text = response.text();
-    console.log('Raw Gemini Response:', text);
 
     // Attempt to clean the response by removing markdown code block formatting
     if (text.startsWith('```json') && text.endsWith('```')) {
@@ -413,7 +415,7 @@ exports.generateMCQ = async (req, res) => {
     res.json({ questions: generatedQuestions });
   } catch (err) {
     console.error('Error generating MCQs:', err);
-    res.status(500).send('Server error');
+    res.status(500).json({ msg: 'Failed to generate MCQs: ' + err.message });
   }
 };
 
@@ -426,14 +428,26 @@ exports.getStudentQuizResultsInClass = async (req, res) => {
   }
 
   try {
-    const quizResults = await QuizResult.find({ student: req.user.dbUser._id }).select('+isLate').populate({
-      path: 'quiz',
-      match: { class: req.params.classId },
-      select: 'title questions topic difficulty dueDate', // Select necessary quiz fields including dueDate
-    });
+    const classId = req.params.classId;
+    const studentId = req.user.dbUser.id;
 
-    // Filter out results where the quiz field is null (due to the match condition)
-    const filteredResults = quizResults.filter(result => result.quiz !== null);
+    const quizzesInClass = await Quiz.getQuizzesForClass(classId);
+    const quizIds = quizzesInClass.map(quiz => quiz.id);
+
+    const quizResults = await QuizResult.getResultsForStudentInQuizzes(studentId, quizIds);
+
+    const filteredResults = quizResults.map(result => {
+      const quiz = quizzesInClass.find(q => q.id === result.quiz);
+      return {
+        ...result,
+        quiz: {
+          title: quiz.title,
+          topic: quiz.topic,
+          difficulty: quiz.difficulty,
+          dueDate: quiz.dueDate,
+        }
+      };
+    });
 
     res.json(filteredResults);
   } catch (err) {
@@ -441,3 +455,5 @@ exports.getStudentQuizResultsInClass = async (req, res) => {
     res.status(500).send('Server error');
   }
 };
+
+

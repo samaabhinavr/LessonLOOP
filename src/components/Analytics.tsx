@@ -70,11 +70,11 @@ const Analytics = () => {
     const fetchAnalytics = async () => {
       try {
         setLoading(true);
-        const classRes = await axios.get(`http://localhost:5000/api/classes/${classId}`);
+        const classRes = await axios.get(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/classes/${classId}`);
         setClassName(classRes.data.name);
 
         // Fetch analytics data
-        const analyticsRes = await axios.get(`http://localhost:5000/api/analytics/${classId}`);
+        const analyticsRes = await axios.get(`https://asia-south1-lessonloop-633d9.cloudfunctions.net/api/analytics/${classId}`);
         
         if (analyticsRes.data) {
           setAnalytics(analyticsRes.data);
